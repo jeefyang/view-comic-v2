@@ -4,48 +4,62 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { createServer } from 'vite';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
-import router from './routers/api';
+
+import router from './routes/api';
+import { readConfig } from './utils/config';
 
 const app: Express = express();
+readConfig();
 
-// 安全 & 跨域
-app.use(helmet());
-app.use(cors()); // 开发时允许前端访问
-app.use(express.json({ limit: '10mb' }));
-
-// 挂载 API 路由（必须在 Vite middlewares 之前！）
+app.use(cors());
+app.use(express.json());
 app.use('/api', router);
 
-// 健康检查
 app.get('/health', (_req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+    res.json({ status: 'OK' });
 });
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const isDev = process.env.NODE_ENV === 'development';
 
-(async () => {
-    try {
-        // 创建 Vite 开发服务器（middleware 模式）
-        const vite = await createServer({
-            server: { middlewareMode: true },
-            configFile: path.resolve(__dirname, '../vite.config.ts'),
-            root: path.resolve(__dirname, '..') // 项目根目录
-        });
+if (isDev) {
+    (async () => {
+        try {
+            // ✅ 1. 创建原生 HTTP 服务器（必须！）
+            const httpServer = http.createServer(app);
 
-        // 挂载 Vite 中间件（处理静态资源、HMR、Vue 文件等）
-        app.use(vite.middlewares);
+            // ✅ 2. 启动 Vite，传入 httpServer（Vite 5+ 标准方式）
+            const vite = await createServer({
+                server: {
+                    middlewareMode: true,
+                    // 在 Vite 7/8 中，也可以显式指定 hmr.server
+                    hmr: {
+                        server: httpServer
+                    }
+                },
+                configFile: path.resolve(__dirname, '../vite.config.ts'),
+                root: path.resolve(__dirname, '..')
+            });
 
-        const PORT = process.env.PORT ? parseInt(process.env.PORT) : 5173;
-        app.listen(PORT, () => {
-            console.log(`🚀 Full-stack dev server running on http://localhost:${PORT}`);
-            console.log(`📁 Data directory: ${path.resolve(__dirname, '../data')}`);
-        });
-    } catch (error) {
-        console.error('❌ Vite middleware failed to start:', error);
-        process.exit(1);
-    }
-})();
+            // ✅ 3. 挂载中间件
+            app.use(vite.middlewares);
 
+            // ✅ 4. 监听端口
+            const PORT = parseInt(process.env.PORT || '5173');
+            httpServer.listen(PORT, () => {
+                console.log(`🚀 Dev server running on http://localhost:${PORT}`);
+            });
+        } catch (error) {
+            console.error('❌ Server startup failed:', error);
+            process.exit(1);
+        }
+    })();
+}
+else {
+    app.use(helmet());
+
+}
 export { app as viteNodeApp };

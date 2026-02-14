@@ -13,7 +13,7 @@ const routes: RouteRecordRaw[] = [
     meta: { showBottomNav: true, title: '书库' }
   },
   {
-    path: '/comics/:libraryId',
+    path: '/list',
     component: ComicsListView,
     props: true,
     meta: { showBottomNav: true, title: '漫画列表' }
