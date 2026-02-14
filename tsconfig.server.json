@@ -1,0 +1,23 @@
+// tsconfig.server.json（放在项目根目录）
+{
+    "extends": "@tsconfig/node24/tsconfig.json",
+    "compilerOptions": {
+        "composite": true,
+        "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo",
+        "outDir": "./dist/server",
+        "moduleResolution": "node", // 确保 Node 风格解析（继承后通常已有）
+        "module": "ESNext", // 使用 ESNext 模块以支持 import.meta
+        "allowJs": false,
+        "noEmit": false // 如果你想生产构建时输出 JS，可保持 false
+    },
+    "include": [
+        "env.d.ts", // ← 关键：包含根目录的 env.d.ts，它会自动引入 vite/client 类型，解决 import.meta.env 报错
+        "server/**/*.ts", // ← 包含整个 server 文件夹的所有 TS 文件
+        "server/**/*.d.ts" // ← 可选：如果有声明文件
+    ],
+    "exclude": [
+        "server/**/*.vue", // 可选：排除可能的 Vue 文件（如果有的话）
+        "node_modules"
+    ],
+    "references": []
+}
