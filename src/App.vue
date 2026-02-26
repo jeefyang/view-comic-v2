@@ -2,7 +2,7 @@
 <template>
   <n-config-provider :theme="darkTheme ? darkThemePreset : undefined">
     <n-global-style />
-    <div id="app">
+    <div id="main">
       <!-- 所有页面都缓存 -->
       <keep-alive :include="cachedViews">
         <router-view />
@@ -33,8 +33,8 @@ const cachedViews = [
 </script>
 
 <style>
-#app {
-  height: 100vh;
+#main {
+  height: calc(100vh - 60px - 2rem);
   display: flex;
   flex-direction: column;
   overflow: hidden;

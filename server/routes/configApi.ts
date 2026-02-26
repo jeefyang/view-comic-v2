@@ -13,7 +13,7 @@ export function useConfigApi(router: JRoute) {
                 initialized: config.initialized,
                 username: config.username
             }
-        });
+        } as JFetchReturnType);
     });
     // 初始化
     router.post('/config/init', async (req, res) => {
@@ -29,6 +29,6 @@ export function useConfigApi(router: JRoute) {
 
         const hash = await bcrypt.hash(password, 12);
         writeConfig({ username, passwordHash: hash, initialized: true });
-        res.json({ code: 200, msg: 'Config initialized' });
+        res.json({ code: 200, msg: 'Config initialized' } as JFetchReturnType);
     });
 }

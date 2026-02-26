@@ -13,7 +13,8 @@
     "include": [
         "env.d.ts", // ← 关键：包含根目录的 env.d.ts，它会自动引入 vite/client 类型，解决 import.meta.env 报错
         "server/**/*.ts", // ← 包含整个 server 文件夹的所有 TS 文件
-        "server/**/*.d.ts" // ← 可选：如果有声明文件
+        "server/**/*.d.ts", // ← 可选：如果有声明文件,
+        "types/**/*.d.ts"
     ],
     "exclude": [
         "server/**/*.vue", // 可选：排除可能的 Vue 文件（如果有的话）
