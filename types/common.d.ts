@@ -1,6 +1,51 @@
-type JFetchReturnType = {
-    code: 200 | 401 | 500 | 666;
+// 400 前端错误
+// 401 未登录
+// 402 参数缺失
+// 500 服务器错误
+// 501 服务器数据缺失
+// 502 缺少权限
+// 503 服务器数据冲突
+// 666 前端请求报错
+type JFetchReturnType<D = any> = {
+    code: -1 | 200 | 400 | 401 | 402 | 500 | 501 | 502 | 503 | 666;
     msg?: string;
-    data?: any;
+    data?: D;
     err?: any;
+};
+
+type LibraryType = { name: string; pathUrl: string; };
+
+
+interface JsonConfig {
+
+}
+
+interface JsonUser {
+    username: string;
+    passwordHash: string;
+    initialized: boolean;
+    type: 'admin' | 'user';
+    createTime?: number;
+    modifyTime?: number;
+    uuid: string;
+}
+
+type configType = {
+};
+
+
+type EditUserType = {
+    editType: 'add' | 'edit' | 'delete',
+    adminUser?: string;
+    adminToken?: string;
+    username?: string;
+    newUsername?: string;
+    password?: string;
+    newPassword?: string;
+};
+
+type UserTokenType = {
+    token: string;
+    uuid: string;
+    createTime: string | number;
 };

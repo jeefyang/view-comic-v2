@@ -12,6 +12,7 @@ export default defineConfig({
   ],
   server: {
     // 后端进程跑在 3000，对外不可见，只给前端 Proxy 用
-    port: 3000
+    port: 3000,
+    host: '0.0.0.0'
   }
 });

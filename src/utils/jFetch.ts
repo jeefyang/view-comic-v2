@@ -1,6 +1,13 @@
-export async function jFetch(o: { method: "GET" | "POST", url: string, data?: any; }) {
+const jFetchCBList: { code: number, fn: (res: Response) => void; }[] = [];
+
+export function addJFetchCB(code: number, fn: (res: Response) => void) {
+    jFetchCBList.push({ code, fn });
+}
+
+export async function jFetch(o: { method: "GET" | "POST", url: string, data?: any; }): Promise<JFetchReturnType> {
     const headers = new Headers({
         "Content-Type": "application/json",
+        "token": localStorage.getItem("token") || "",
 
     });
     const list: { method: typeof o.method, fn: () => Promise<Response>; }[] = [
@@ -33,7 +40,14 @@ export async function jFetch(o: { method: "GET" | "POST", url: string, data?: an
     try {
         const res = await item.fn();
         if (res.status == 401) {
-            console.log("请登录");
+            console.warn("请登录");
+            for (let i = 0; i < jFetchCBList.length; i++) {
+                const cc = jFetchCBList[i]!;
+                if (cc.code == 401) {
+                    cc.fn(res);
+                }
+            }
+
         }
         return res.json();
     }
