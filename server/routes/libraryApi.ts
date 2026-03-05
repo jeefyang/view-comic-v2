@@ -35,6 +35,7 @@ export function useLibraryApi(router: JRoute) {
                 code: 502,
                 msg: "权限不足",
             } as JFetchReturnType);
+            return;
         }
         const { pathUrl } = req.body as LibraryType;
         if (!fs.existsSync(pathUrl)) {
@@ -78,6 +79,7 @@ export function useLibraryApi(router: JRoute) {
                 code: 502,
                 msg: "权限不足",
             } as JFetchReturnType);
+            return;
         }
         const { name, pathUrl } = req.body as LibraryType;
         if (!pathUrl || !name) {
@@ -106,6 +108,7 @@ export function useLibraryApi(router: JRoute) {
             code: 500,
             msg: "添加失败,仓库名重复了"
         } as JFetchReturnType);
+        return;
     });
 
     router.post("/library/remove", async (req, res) => {
@@ -126,6 +129,7 @@ export function useLibraryApi(router: JRoute) {
                 code: 502,
                 msg: "权限不足",
             } as JFetchReturnType);
+            return;
         }
         const { name } = req.body as LibraryType;
         if (!name) {
@@ -146,6 +150,7 @@ export function useLibraryApi(router: JRoute) {
             code: 503,
             msg: "删除失败,仓库名不存在"
         } as JFetchReturnType);
+        return;
     });
 
     router.post("/library/edit", async (req, res) => {
@@ -166,6 +171,7 @@ export function useLibraryApi(router: JRoute) {
                 code: 502,
                 msg: "权限不足",
             } as JFetchReturnType);
+            return;
         }
         const { name, pathUrl } = req.body as LibraryType;
         if (!name || !pathUrl) {
@@ -194,6 +200,7 @@ export function useLibraryApi(router: JRoute) {
             code: 503,
             msg: "修改失败,仓库名不存在"
         } as JFetchReturnType);
+        return;
     });
 
 }

@@ -11,10 +11,12 @@ import { fileURLToPath } from 'node:url';
 import router from './routes/api';
 import { readConfig } from './utils/config';
 import { readUsers } from './utils/user';
+import { readTokenCache } from './utils/cache';
 
 const app: Express = express();
 readConfig();
 readUsers();
+readTokenCache();
 
 app.use(cors());
 app.use(express.json());

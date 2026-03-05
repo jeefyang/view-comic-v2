@@ -26,31 +26,21 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 export let tokenCache: UserTokenType[] = [];
 const tokenLimit = 3;
 
-export function readTokenCache(): UserTokenType[] {
-    let str = "";
-    if (fs.existsSync(TOTKEN_FILE)) {
-        str += fs.readFileSync(TOTKEN_FILE, 'utf8');
+export function readTokenCache() {
+    if (!fs.existsSync(TOTKEN_FILE)) {
+        return;
     }
-    const list = str.split(`\n`);
-    return list.filter(c => !!c.trim()).map(c => {
-        const s = c.split(' ');
-        return {
-            uuid: s[0],
-            token: s[1],
-            createTime: s[2]
-        };
-    });
+    const str = fs.readFileSync(TOTKEN_FILE, 'utf8');
+    tokenCache = JSON.parse(str);
 }
+
 
 export function writeTokenCache() {
-    let str = "";
-    for (let i = 0; i < tokenCache.length; i++) {
-        str += `${tokenCache[i].uuid} ${tokenCache[i].token} ${tokenCache[i].createTime}\n`;
-    }
-    fs.writeFileSync(TOTKEN_FILE, str);
+
+    fs.writeFileSync(TOTKEN_FILE, JSON.stringify(tokenCache, null, 4));
 }
 
-export function refreshTokenCache() {
+export function refreshTokenCache(forceWrite: boolean = false) {
     let isDel = false;
     const limitList: { [x in string]: { count: number; } } = {};
     for (let i = tokenCache.length - 1; i >= 0; i--) {
@@ -65,8 +55,24 @@ export function refreshTokenCache() {
         tokenCache.splice(i, 1);
         isDel = true;
     }
-    if (isDel) {
+    if (isDel || forceWrite) {
         writeTokenCache();
     }
 }
 
+
+export function addTokenCache(tokenData: UserTokenType) {
+    tokenCache.push(tokenData);
+    console.log("add");
+    refreshTokenCache(true);
+}
+
+
+export function removeTokenCache(tokenData: UserTokenType) {
+    const index = tokenCache.findIndex(item => item.uuid === tokenData.uuid);
+    if (index === -1) {
+        return;
+    }
+    tokenCache.splice(index, 1);
+    refreshTokenCache(true);
+}

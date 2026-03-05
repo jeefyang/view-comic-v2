@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
-import { tokenCache, User_FILE } from './cache';
+import { addTokenCache, tokenCache, User_FILE } from './cache';
 import { nanoid } from "nanoid";
 
 
@@ -91,8 +91,8 @@ export function addUser(editData: EditUserType): [JsonUser | undefined, any] {
             if (!editData.adminToken) {
                 return [undefined, '管理员用户令牌错误'];
             }
-            const adminToken = tokenCache.find(c => c.uuid == adminUser.uuid)?.token;
-            if (!adminToken || adminToken != editData.adminToken) {
+            const adminToken = tokenCache.find(c => c.uuid == adminUser.uuid && c.token == editData.adminToken)?.token;
+            if (!adminToken) {
                 return [undefined, '管理员用户令牌错误,请重新登录`'];
             }
         }
@@ -135,7 +135,7 @@ export function updateUsers(list: JsonUser[]) {
 
 /** 验证用户 */
 export function verifyUser(token: string) {
-    return tokenCache.findIndex(c => c.token == token);
+    return tokenCache.findIndex(c => c.token == token) != -1;
 }
 
 export function editUser(editData: EditUserType): [JsonUser | undefined, any] {
@@ -167,7 +167,7 @@ export function editUser(editData: EditUserType): [JsonUser | undefined, any] {
         }
         if (editData.newPassword) {
             // 哈希密码
-            const passwordHash = bcrypt.hashSync(editData.password, saltRounds);
+            const passwordHash = bcrypt.hashSync(editData.newPassword, saltRounds);
             item.passwordHash = passwordHash;
         }
         item.modifyTime = new Date().getTime();
@@ -196,8 +196,8 @@ export function deleteUser(editData: EditUserType): [JsonUser | undefined, any] 
             if (!editData.adminToken) {
                 return [undefined, '管理员用户令牌错误'];
             }
-            const adminToken = tokenCache.find(c => c.uuid == adminUser.uuid)?.token;
-            if (!adminToken || adminToken != editData.adminToken) {
+            const adminToken = tokenCache.find(c => c.uuid == adminUser.uuid && c.token == editData.adminToken)?.token;
+            if (!adminToken) {
                 return [undefined, '管理员用户令牌错误,请重新登录`'];
             }
         }
@@ -216,6 +216,7 @@ export function deleteUser(editData: EditUserType): [JsonUser | undefined, any] 
             return [undefined, '不能删除管理员用户'];
         }
         list.splice(index, 1);
+        updateUsers(list);
         return [item, undefined];
 
     } catch (err) {
@@ -224,7 +225,7 @@ export function deleteUser(editData: EditUserType): [JsonUser | undefined, any] 
     }
 }
 
-export function userLogin(username: string, password: string) {
+export function userLogin(username: string, password: string): [{ tokenData: UserTokenType, userData: JsonUser; } | undefined, any] {
     const list = readUsers();
     const user = list.find(item => item.username === username);
     if (!user) {
@@ -234,7 +235,13 @@ export function userLogin(username: string, password: string) {
     if (!bcrypt.compareSync(password, user.passwordHash)) {
         return [undefined, '密码错误'];
     }
-    // const token = jwt.sign({ uuid: user.uuid }, secret, { expiresIn: '1d' });
+
+    const obj: UserTokenType = {
+        uuid: user.uuid, token: nanoid(128)
+        , createTime: new Date().getTime()
+    };
+    addTokenCache(obj);
+    return [{ tokenData: obj, userData: user }, undefined];
 }
 
 export function getUserFromToken(token: string): [JsonUser | undefined, any] {

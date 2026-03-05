@@ -1,13 +1,16 @@
+import { useConfigStore } from "@/stores/config";
+
 const jFetchCBList: { code: number, fn: (res: Response) => void; }[] = [];
 
 export function addJFetchCB(code: number, fn: (res: Response) => void) {
     jFetchCBList.push({ code, fn });
 }
 
-export async function jFetch(o: { method: "GET" | "POST", url: string, data?: any; }): Promise<JFetchReturnType> {
+export async function jFetch<T = any>(o: { method: "GET" | "POST", url: string, data?: any; }): Promise<JFetchReturnType<T>> {
+    const config = useConfigStore();
     const headers = new Headers({
         "Content-Type": "application/json",
-        "token": localStorage.getItem("token") || "",
+        "token": config.token || "",
 
     });
     const list: { method: typeof o.method, fn: () => Promise<Response>; }[] = [

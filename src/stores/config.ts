@@ -3,13 +3,18 @@ import { defineStore } from 'pinia';
 
 export const useConfigStore = defineStore('config', () => {
     const token = ref("");
-    const userName = ref("");
+    const username = ref("");
+    const userType = ref(<UserTypeType>"user");
     const curLibrary = ref(<LibraryType>{});
     const saveKey = "config";
     const showLogin = ref(false);
 
+    const isLogin = computed(() => {
+        return !!token.value && !!username.value;
+    });
+
     const returnData = {
-        token, userName, curLibrary
+        userType, token, username, curLibrary
     };
 
     const save = () => {
@@ -42,5 +47,21 @@ export const useConfigStore = defineStore('config', () => {
     };
 
 
-    return { ...returnData, showLogin, save, load, clear, setLibrary };
+
+    const toLogin = (data: WebUserType) => {
+        username.value = data.username;
+        token.value = data.token || "";
+        userType.value = data.type;
+        save();
+    };
+
+    const toLogout = () => {
+        username.value = "";
+        token.value = "";
+        userType.value = "user";
+        save();
+    };
+
+    load();
+    return { ...returnData, showLogin, save, load, clear, setLibrary, toLogin, toLogout, isLogin };
 });
