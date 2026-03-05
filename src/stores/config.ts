@@ -5,7 +5,7 @@ export const useConfigStore = defineStore('config', () => {
     const token = ref("");
     const username = ref("");
     const userType = ref(<UserTypeType>"user");
-    const curLibrary = ref(<LibraryType>{});
+    const curLibrary = ref(<JsonLibrary>{});
     const saveKey = "config";
     const showLogin = ref(false);
 
@@ -41,7 +41,7 @@ export const useConfigStore = defineStore('config', () => {
         localStorage.removeItem(saveKey);
     };
 
-    const setLibrary = (item: LibraryType) => {
+    const setLibrary = (item: JsonLibrary) => {
         curLibrary.value = item;
         save();
     };

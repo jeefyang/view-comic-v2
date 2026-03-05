@@ -1,10 +1,12 @@
 <template>
     <n-flex vertical style="height: 100%">
         <n-flex justify="space-between" style="width: 100%">
-            <n-icon size="50" :color="themeVars.primaryColor" @click="addLibraryFn">
-                <Add12Filled />
-            </n-icon>
-            <n-icon size="50" :color="themeVars.primaryColor" @click="addLibraryFn">
+            <div>
+                <n-icon size="50" :color="themeVars.primaryColor" @click="addLibraryFn" v-if="configSotre.userType == 'admin'">
+                    <Add12Filled />
+                </n-icon>
+            </div>
+            <n-icon size="50" :color="themeVars.primaryColor" @click="getList()">
                 <RefreshOutlined />
             </n-icon>
         </n-flex>
@@ -20,9 +22,11 @@
                     <n-flex justify="space-between">
                         <n-button @click="toJump(item)" type="primary">跳转</n-button>
                         <n-flex>
-                            <n-button @click="toEdit(item)" type="primary">编辑</n-button>
-                            <n-button @click="toTest(item)">测试</n-button>
-                            <n-button @click="toRemove(item)" type="error">删除</n-button>
+                            <template v-if="configSotre.userType == 'admin'">
+                                <n-button @click="toEdit(item)" type="primary">编辑</n-button>
+                                <n-button @click="toTest(item)">测试</n-button>
+                                <n-button @click="toRemove(item)" type="error">删除</n-button></template
+                            >
                         </n-flex>
                     </n-flex>
                 </n-card>
@@ -70,12 +74,13 @@ const router = useRouter();
 const message = useMessage();
 const dialog = useDialog();
 
-const formData = ref({
+const formData = ref(<EditLibraryType>{
     name: "",
-    pathUrl: ""
+    pathUrl: "",
+    newName: ""
 });
 
-const dataList = ref(<LibraryType[]>[]);
+const dataList = ref(<JsonLibrary[]>[]);
 
 let curFolderPath = "";
 let pathOption: { label: string; key: string; show?: boolean }[] = [];
@@ -131,13 +136,13 @@ const toSave = async () => {
     getList();
 };
 
-const toEdit = async (item: LibraryType) => {
+const toEdit = async (item: JsonLibrary) => {
     formData.value = item;
     openDrawer.value = true;
     drawerType.value = "edit";
 };
 
-const toRemove = async (item: LibraryType) => {
+const toRemove = async (item: JsonLibrary) => {
     dialog.warning({
         title: "删除",
         content: `确定删除仓库 ${item.name} 吗？`,
@@ -154,7 +159,7 @@ const toRemove = async (item: LibraryType) => {
     });
 };
 
-const toTest = async (item: LibraryType) => {
+const toTest = async (item: EditLibraryType) => {
     const res = await jFetch({ method: "POST", url: "/api/library/folderTest", data: { ...item } });
     if (res.code == 200) {
         message.success(res.msg || "");
@@ -163,7 +168,7 @@ const toTest = async (item: LibraryType) => {
     }
 };
 
-const toJump = (item: LibraryType) => {
+const toJump = (item: JsonLibrary) => {
     // window.open(item.pathUrl);
     configSotre.setLibrary(item);
     router.push({ path: "/list" });
@@ -180,6 +185,7 @@ const getList = async () => {
         message.error(res.msg || "");
         return;
     }
+    message.success(res.msg || "");
     dataList.value = res.data;
 };
 

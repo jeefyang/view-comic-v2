@@ -90,6 +90,8 @@ const toDel = async (item: WebUserType) => {
 };
 
 onActivated(() => {
-    getList();
+    if (configSotre.userType == "admin") {
+        getList();
+    }
 });
 </script>

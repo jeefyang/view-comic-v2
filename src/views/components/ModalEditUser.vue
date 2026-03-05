@@ -2,10 +2,10 @@
     <n-modal v-model:show="modelShow">
         <n-card style="width: 600px" title="修改用户" :bordered="false" role="dialog" aria-modal="true">
             <n-form ref="formRef" :model="formData">
-                <n-form-item path="username" label="用户名">
+                <n-form-item path="username" label="原用户名">
                     {{ configSotre.username }}
                 </n-form-item>
-                <n-form-item path="password" label="密码">
+                <n-form-item path="password" label="原密码">
                     <n-input v-model:value="formData.password" type="password" placeholder="请输入密码" />
                 </n-form-item>
                 <n-form-item path="username" label="更改用户名">

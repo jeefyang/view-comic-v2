@@ -14,7 +14,10 @@ type JFetchReturnType<D = any> = {
     err?: any;
 };
 
-type LibraryType = { name: string; pathUrl: string; };
+type JsonLibrary = {
+    name: string; pathUrl: string; uuid: string, createTime?: number;
+    modifyTime?: number;
+};
 
 
 interface JsonConfig {
@@ -34,6 +37,12 @@ interface JsonUser {
 type UserTypeType = 'admin' | 'user';
 
 type configType = {
+};
+
+type EditLibraryType = {
+    name: string;
+    newName?: string;
+    pathUrl?: string;
 };
 
 
