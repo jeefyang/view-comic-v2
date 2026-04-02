@@ -78,3 +78,11 @@ export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any]
     updateLibs();
     return [item, undefined];
 };
+
+export function getLibPathByUUID(uuid: string): [string | undefined, any] {
+    const index = libCache.findIndex(item => item.uuid == uuid);
+    if (index == -1) {
+        return [undefined, '未找到'];
+    }
+    return [libCache[index].pathUrl, undefined];
+}
