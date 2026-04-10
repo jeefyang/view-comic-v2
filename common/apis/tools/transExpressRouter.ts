@@ -13,23 +13,25 @@ export class TransExpressRouter<T extends ReturnType<typeof apiUrlsTrans>> {
             try {
                 const data = await cb(from);
                 if (data.err) {
-                    res.json({
-                        code: data.code || 500,
+                    const code = data.code || 500;
+                    res.status(code).json({
+                        code: code,
                         msg: data.msg || "服务器错误",
                         err: data.err
                     });
                     return;
                 }
-
-                res.json({
-                    code: data.code || 200,
+                const code = data.code || 200;
+                res.status(code).json({
+                    code: code,
                     msg: data.msg || "操作成功",
                     data: data.data
                 });
             }
             catch (err) {
-                res.json({
-                    code: 500,
+                const code = 500;
+                res.status(code).json({
+                    code: code,
                     msg: "服务器错误",
                     err: err
                 });
@@ -38,14 +40,17 @@ export class TransExpressRouter<T extends ReturnType<typeof apiUrlsTrans>> {
         };
         if (item?.method == "GET") {
             this.router.get(item.url, async (req, res) => {
+
                 const from = req.query as T[keyof T]["from"];
-                fn(from, res);
+                await fn(from, res);
+                return;
             });
         }
         else if (item?.method == "POST") {
             this.router.post(item.url, async (req, res) => {
                 const from = req.body as T[keyof T]["from"];
-                fn(from, res);
+                await fn(from, res);
+                return;
             });
         }
     }
