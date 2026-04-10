@@ -4,7 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
-import { CONFIG_FILE, DATA_DIR } from './cache';
+import { CONFIG_FILE, DATA_DIR } from './cache.js';
 
 /**
  * 读取配置，如果不存在则自动初始化

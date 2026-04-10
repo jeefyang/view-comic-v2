@@ -8,11 +8,11 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
 
-import router from './routes/api';
-import { readConfig } from './utils/config';
-import { readUsers } from './utils/user';
-import { readTokenCache } from './utils/cache';
-import { readLibs } from './utils/library';
+import router from './routes/api.js';
+import { readConfig } from './utils/config.js';
+import { readUsers } from './utils/user.js';
+import { readTokenCache } from './utils/cache.js';
+import { readLibs } from './utils/library.js';
 
 const app: Express = express();
 readConfig();
@@ -24,9 +24,12 @@ app.use(cors());
 app.use(express.json());
 app.use('/api', router);
 
+
 app.get('/health', (_req, res) => {
     res.json({ status: 'OK' });
 });
+
+
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = process.env.NODE_ENV === 'development';
@@ -66,6 +69,8 @@ if (isDev) {
 }
 else {
     app.use(helmet());
-
 }
+
+
+
 export { app as viteNodeApp };

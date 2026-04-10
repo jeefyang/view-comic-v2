@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { verifyUser } from './user';
+import { verifyUser } from './user.js';
 export class JRoute {
     constructor(public route: Router) {
 

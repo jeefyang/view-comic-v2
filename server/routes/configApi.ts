@@ -1,7 +1,7 @@
 
 import bcrypt from 'bcrypt';
-import { readConfig, writeConfig } from '../utils/config';
-import { JRoute } from '../utils/jroute';
+import { readConfig, writeConfig } from '../utils/config.js';
+import { JRoute } from '../utils/jroute.js';
 
 export function useConfigApi(router: JRoute) {
     router.get('/config', async (req, res) => {

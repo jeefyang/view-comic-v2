@@ -1,5 +1,5 @@
-import { JRoute } from "../utils/jroute";
-import { addUser, deleteUser, editUser, getUserFromToken, readUsers, userLogin } from "../utils/user";
+import { JRoute } from "../utils/jroute.js";
+import { addUser, deleteUser, editUser, getUserFromToken, getUserGroupList, readUsers, userLogin } from "../utils/user.js";
 
 
 export function useUserApi(router: JRoute) {
@@ -32,7 +32,7 @@ export function useUserApi(router: JRoute) {
     });
 
     router.post(`/user/edit`, async (req, res) => {
-        const { username, password, newPassword, newUsername } = req.body;
+        const { username, password, newPassword, newUsername, group } = req.body;
         if (!username || !password) {
             res.status(402).json({
                 code: 402,
@@ -47,7 +47,7 @@ export function useUserApi(router: JRoute) {
             });
             return;
         }
-        const data = editUser({ editType: 'edit', username, password, newUsername, newPassword });
+        const data = editUser({ editType: 'edit', username, password, newUsername, newPassword, group: group });
         if (data[1]) {
             res.status(500).json({
                 code: 500,
@@ -59,12 +59,19 @@ export function useUserApi(router: JRoute) {
             code: 200,
             msg: "修改成功"
         });
+    });
 
-
+    router.get("/user/groupList", async (req, res) => {
+        const list = getUserGroupList();
+        return res.json({
+            code: 200,
+            msg: "操作成功",
+            data: list
+        });
     });
 
     router.post(`/user/add`, async (req, res) => {
-        const { newUsername, adminToken, newPassword, adminUser } = req.body;
+        const { newUsername, adminToken, newPassword, adminUser, group } = req.body;
         if (!adminToken) {
             res.status(402).json({
                 code: 402,
@@ -80,7 +87,7 @@ export function useUserApi(router: JRoute) {
             });
             return;
         }
-        const data = addUser({ editType: 'add', adminToken, newUsername, newPassword, adminUser });
+        const data = addUser({ editType: 'add', adminToken, newUsername, newPassword, adminUser, group });
         if (data[1]) {
             res.status(500).json({
                 code: 500,

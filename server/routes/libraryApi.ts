@@ -1,9 +1,9 @@
-import { JRoute } from "../utils/jroute";
+import { JRoute } from "../utils/jroute.js";
 import path from 'path';
 import fs from "fs";
-import { LIBRARY_FILE } from "../utils/cache";
-import { editLib, getList, removeLib, addLib } from "../utils/library";
-import { getUserFromToken } from "../utils/user";
+import { LIBRARY_FILE } from "../utils/cache.js";
+import { editLib, getList, removeLib, addLib } from "../utils/library.js";
+import { getUserFromToken } from "../utils/user.js";
 
 export function useLibraryApi(router: JRoute) {
 
@@ -14,7 +14,7 @@ export function useLibraryApi(router: JRoute) {
         res.json({
             code: 200,
             data: getList(),
-            msg:"获取成功"
+            msg: "获取成功"
         } as JFetchReturnType);
     });
 

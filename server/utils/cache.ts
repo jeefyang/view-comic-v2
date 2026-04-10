@@ -63,7 +63,6 @@ export function refreshTokenCache(forceWrite: boolean = false) {
 
 export function addTokenCache(tokenData: UserTokenType) {
     tokenCache.push(tokenData);
-    console.log("add");
     refreshTokenCache(true);
 }
 

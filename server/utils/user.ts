@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
-import { addTokenCache, tokenCache, User_FILE } from './cache';
+import { addTokenCache, tokenCache, User_FILE } from './cache.js';
 import { nanoid } from "nanoid";
 
 
@@ -23,6 +23,7 @@ export function filterUsers(list: JsonUser[], target?: Partial<JsonUser>) {
         return true;
     });
 }
+
 
 function initUsers(): JsonUser[] {
 
@@ -54,6 +55,7 @@ function initUsers(): JsonUser[] {
             type: "admin",
             uuid: nanoid(24),
             createTime: new Date().getTime(),
+            group: ""
         };
 
         // 写入 config.json
@@ -73,6 +75,10 @@ export function readUsers(target?: Partial<JsonUser>): JsonUser[] {
         userCache = initUsers();
     }
     return filterUsers(userCache, target);
+}
+
+export function getUserGroupList() {
+    return [...new Set(readUsers().map(item => item.group).filter(c => c))];
 }
 
 export function addUser(editData: EditUserType): [JsonUser | undefined, any] {
@@ -99,6 +105,9 @@ export function addUser(editData: EditUserType): [JsonUser | undefined, any] {
         else {
             return [undefined, '请选择管理员用户'];
         }
+        if (!editData.group) {
+            return [undefined, '请选择用户组'];
+        }
         if (!editData.newUsername || !editData.newPassword) {
             return [undefined, '用户名或密码不能为空'];
         }
@@ -111,6 +120,7 @@ export function addUser(editData: EditUserType): [JsonUser | undefined, any] {
 
         const newUser: JsonUser = {
             username: editData.newUsername,
+            group: editData.group,
             passwordHash,
             initialized: true,
             type: "user",
@@ -130,7 +140,6 @@ export function addUser(editData: EditUserType): [JsonUser | undefined, any] {
 export function updateUsers(list: JsonUser[]) {
     userCache = list;
     fs.writeFileSync(User_FILE, JSON.stringify(list, null, 4), 'utf8');
-
 }
 
 /** 验证用户 */
@@ -165,10 +174,15 @@ export function editUser(editData: EditUserType): [JsonUser | undefined, any] {
             }
             item.username = editData.newUsername;
         }
+        // 修改密码
         if (editData.newPassword) {
             // 哈希密码
             const passwordHash = bcrypt.hashSync(editData.newPassword, saltRounds);
             item.passwordHash = passwordHash;
+        }
+        // 修改分组
+        if (editData.group && item.type != 'admin') {
+            item.group = editData.group;
         }
         item.modifyTime = new Date().getTime();
         list[index] = item;

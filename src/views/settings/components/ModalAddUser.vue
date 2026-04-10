@@ -11,6 +11,9 @@
                 <n-form-item path="password" label="重复密码">
                     <n-input v-model:value="formData.repeatPassword" type="password" placeholder="请输入密码" />
                 </n-form-item>
+                <n-form-item path="group" label="用户组">
+                    <XDropdownInput v-model:value="formData.group" :options="groupOptions" placeholder="输入路径,/添加提示"></XDropdownInput>
+                </n-form-item>
             </n-form>
             <template #footer>
                 <n-button class="mr-4" @click="modelShow = false">取消</n-button>
@@ -22,9 +25,9 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
 import { jFetch } from "@/utils/jFetch";
-import { config } from "dotenv";
 import { useMessage } from "naive-ui";
-import { computed, reactive, ref } from "vue";
+import { computed, onActivated, reactive, ref, watch } from "vue";
+import XDropdownInput from "@/components/XDropdownInput.vue";
 
 const props = defineProps<{
     show: boolean;
@@ -35,8 +38,11 @@ const formRef = ref(null);
 const formData = reactive({
     newUsername: "",
     newPassword: "",
-    repeatPassword: ""
+    repeatPassword: "",
+    group: ""
 });
+
+const groupOptions = ref(<{ label: string; key: string }[]>[]);
 
 const configSotre = useConfigStore();
 const msg = useMessage();
@@ -56,6 +62,21 @@ const modelShow = computed({
         emits("update:show", value);
     }
 });
+
+watch(
+    () => props.show,
+    (v) => {
+        if (v) {
+            getGroupList();
+        }
+    }
+);
+
+const getGroupList = async () => {
+    console.log("xx");
+    const res = await jFetch<WebUserType>({ method: "GET", url: "/api/user/getGroupList" });
+    console.log(res);
+};
 
 const toAdd = async () => {
     if (!configSotre.isLogin) {

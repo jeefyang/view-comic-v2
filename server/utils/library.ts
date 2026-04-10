@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from "fs";
-import { LIBRARY_FILE } from "../utils/cache";
+import { LIBRARY_FILE } from "../utils/cache.js";
 import { nanoid } from 'nanoid';
 
 let libCache: JsonLibrary[] = [];

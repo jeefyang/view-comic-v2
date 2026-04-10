@@ -15,8 +15,8 @@ type JFetchReturnType<D = any> = {
 };
 
 type JsonLibrary = {
-    name: string; pathUrl: string; uuid: string, createTime?: number;
-    modifyTime?: number;
+    name: string; pathUrl: string; uuid: string; createTime?: number;
+    modifyTime?: number; groupList?: string[];
 };
 
 
@@ -32,6 +32,8 @@ interface JsonUser {
     createTime?: number;
     modifyTime?: number;
     uuid: string;
+    /** 分组,管理员默认为空 */
+    group: string;
 }
 
 type UserTypeType = 'admin' | 'user';
@@ -43,6 +45,8 @@ type EditLibraryType = {
     name: string;
     newName?: string;
     pathUrl?: string;
+    /** 权限分组 */
+    groupList?: string[];
 };
 
 
@@ -54,6 +58,7 @@ type EditUserType = {
     newUsername?: string;
     password?: string;
     newPassword?: string;
+    group?: string;
 };
 
 type UserTokenType = {
@@ -66,5 +71,6 @@ type WebUserType = {
     token?: string;
     username: string;
     type: UserTypeType;
+    group: string;
 };
 
