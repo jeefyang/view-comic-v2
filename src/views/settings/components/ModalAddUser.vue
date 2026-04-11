@@ -24,10 +24,10 @@
 </template>
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
-import { jFetch } from "@/utils/jFetch";
 import { useMessage } from "naive-ui";
 import { computed, onActivated, reactive, ref, watch } from "vue";
 import XDropdownInput from "@/components/XDropdownInput.vue";
+import { userFetch } from "@/utils/jFetch";
 
 const props = defineProps<{
     show: boolean;
@@ -73,8 +73,7 @@ watch(
 );
 
 const getGroupList = async () => {
-    console.log("xx");
-    const res = await jFetch<WebUserType>({ method: "GET", url: "/api/user/getGroupList" });
+    const res = await userFetch.request("groupList");
     console.log(res);
 };
 
@@ -95,8 +94,7 @@ const toAdd = async () => {
         msg.warning("密码不一致");
         return;
     }
-
-    const res = await jFetch<WebUserType>({ method: "POST", url: "/api/user/add", data: { ...formData, adminToken: configSotre.token, adminUser: configSotre.username } });
+    const res = await userFetch.request("add", { ...formData, adminToken: configSotre.token, adminUser: configSotre.username });
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;

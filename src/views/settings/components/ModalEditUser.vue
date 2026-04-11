@@ -27,7 +27,7 @@
 </template>
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
-import { jFetch } from "@/utils/jFetch";
+import { userFetch } from "@/utils/jFetch";
 import { useMessage } from "naive-ui";
 import { computed, reactive, ref } from "vue";
 
@@ -81,8 +81,7 @@ const toEdit = async () => {
         msg.error("密码不一致");
         return;
     }
-
-    const res = await jFetch<WebUserType>({ method: "POST", url: "/api/user/edit", data: { ...formData, username: configSotre.username } });
+    const res = await userFetch.request("edit", { ...formData, username: configSotre.username });
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;

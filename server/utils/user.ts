@@ -1,9 +1,8 @@
 import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import bcrypt from 'bcrypt';
 import { addTokenCache, tokenCache, User_FILE } from './cache.js';
 import { nanoid } from "nanoid";
+import { type Request, type Response } from "express";
 
 
 const saltRounds = 12;
@@ -270,3 +269,15 @@ export function getUserFromToken(token: string): [JsonUser | undefined, any] {
     }
     return [user, undefined];
 }
+
+export async function vertifyToken(req: Request, res: Response): Promise<ReturnType<any> | undefined> {
+    const token = <string>(req.headers.token);
+    if (!token) {
+        return { code: 401, err: 'Unauthorized', msg: "token不存在,请先登录" };
+    }
+    if (!verifyUser(token)) {
+        return { code: 401, err: 'Unauthorized', msg: "token过期,请先登录" };
+    }
+    return undefined;
+
+};

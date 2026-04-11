@@ -1,165 +1,152 @@
-import { JRoute } from "../utils/jroute.js";
-import { addUser, deleteUser, editUser, getUserFromToken, getUserGroupList, readUsers, userLogin } from "../utils/user.js";
+
+import { TransExpressRouter } from "@common/apis/tools/transExpressRouter.js";
+import { addUser, deleteUser, editUser, getUserFromToken, getUserGroupList, readUsers, userLogin, vertifyToken } from "../utils/user.js";
+import { Router } from 'express';
+import { UserApiUrl } from "@common/apis/user.js";
+import { a } from "vue-router/dist/index-Cu9B0wDz.mjs";
 
 
-export function useUserApi(router: JRoute) {
+export function useUserApi(router: Router) {
 
+    const userRouter = new TransExpressRouter(UserApiUrl, router);
 
-    router.post('/user/login', async (req, res) => {
-        const { username, password } = req.body;
+    userRouter.setRouter("login", async (from, req, res) => {
+        const { username, password } = from;
         if (!username || !password) {
-            res.status(402).json({
+            return {
                 code: 402,
                 msg: '用户名/密码不能为空',
-            });
-            return;
+            };
         }
         const data = userLogin(username, password);
         if (data[1]) {
-            res.status(403).json({
+            return {
                 code: 403,
                 msg: data[1],
-            });
-            return;
+            };
         }
         const target = data[0]!;
-
-        res.json({
+        return {
             code: 200,
-            data: { token: target.tokenData.token, username: target.userData.username, type: target.userData.type } as WebUserType,
-        });
-        return;
+            data: { token: target.tokenData.token, username: target.userData.username, type: target.userData.type, group: target.userData.group },
+        };
+
     });
 
-    router.post(`/user/edit`, async (req, res) => {
-        const { username, password, newPassword, newUsername, group } = req.body;
+    userRouter.setRouter("edit", async (from, req, res) => {
+        const { username, password, newPassword, newUsername } = from;
         if (!username || !password) {
-            res.status(402).json({
+            return {
                 code: 402,
                 msg: '用户名/密码不能为空',
-            });
-            return;
+            };
         }
         if (!newUsername && !newPassword) {
-            res.status(402).json({
+            return {
                 code: 402,
                 msg: '请填写需要修改的用户名/密码',
-            });
-            return;
+            };
         }
-        const data = editUser({ editType: 'edit', username, password, newUsername, newPassword, group: group });
+        const data = editUser({ editType: 'edit', username, password, newUsername, newPassword });
         if (data[1]) {
-            res.status(500).json({
+            return {
                 code: 500,
-                msg: data[1]
-            });
-            return;
+                msg: data[1],
+            };
         }
-        res.json({
+        return {
             code: 200,
             msg: "修改成功"
-        });
+        };
+
     });
 
-    router.get("/user/groupList", async (req, res) => {
-        const list = getUserGroupList();
-        return res.json({
+    userRouter.setRouter("groupList", async (from, req, res) => {
+        return {
             code: 200,
-            msg: "操作成功",
-            data: list
-        });
+            data: getUserGroupList()
+        };
     });
 
-    router.post(`/user/add`, async (req, res) => {
-        const { newUsername, adminToken, newPassword, adminUser, group } = req.body;
+    userRouter.setRouter("add", async (from, req, res) => {
+        const { newUsername, adminToken, newPassword, adminUser, group } = from;
         if (!adminToken) {
-            res.status(402).json({
+            return {
                 code: 402,
                 msg: 'token不能为空',
-            });
-            return;
-
+            };
         }
         if (!newUsername || !newPassword) {
-            res.status(402).json({
+            return {
                 code: 402,
                 msg: '用户名/密码不能为空',
-            });
-            return;
+            };
         }
         const data = addUser({ editType: 'add', adminToken, newUsername, newPassword, adminUser, group });
         if (data[1]) {
-            res.status(500).json({
+            return {
                 code: 500,
-                msg: data[1]
-            });
-            return;
+                msg: data[1],
+            };
         }
-        res.json({
+        return {
             code: 200,
             msg: "添加成功"
-        });
-        return;
-
-
+        };
     });
 
-    router.post(`/user/delete`, async (req, res) => {
+    userRouter.setRouter("delete", async (from, req, res) => {
         const { adminToken, adminUser, username } = req.body;
         if (!adminToken || !adminUser) {
-            res.status(402).json({
+            return {
                 code: 402,
                 msg: '管理员用户名/token不能为空',
-            });
-            return;
-
+            };
         }
         if (!username) {
-            res.status(402).json({
+            return {
                 code: 402,
                 msg: '需要删除的用户名不能为空',
-            });
-            return;
+            };
         }
         const data = deleteUser({ editType: 'delete', adminToken, adminUser, username });
         if (data[1]) {
-            res.status(500).json({
+            return {
                 code: 500,
-                msg: data[1]
-            });
-            return;
+                msg: data[1],
+            };
         }
-        res.json({
+        return {
             code: 200,
             msg: "删除成功"
-        });
-        return;
+        };
     });
 
-    router.get(`/user/list`, async (req, res) => {
-        const token = await router.vertifyToken(req, res);
-        if (!token) {
-            return;
+    userRouter.setRouter("list", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
         }
+
+        const token = <string>(req.headers.token);
         const [user, err] = getUserFromToken(token);
         if (err) {
-            res.json({
+            return {
                 code: 500,
                 msg: err,
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (user?.type != 'admin') {
-            res.json({
+            return {
                 code: 502,
                 msg: "权限不足",
-            } as JFetchReturnType);
-            return;
+            };
         }
         const users = readUsers();
-        res.json({
+        return {
             code: 200,
-            data: users.map(c => { return { username: c.username, type: c.type }; })
-        });
+            data: users.map(c => { return { username: c.username, type: c.type, group: c.group }; })
+        };
     });
+
 }

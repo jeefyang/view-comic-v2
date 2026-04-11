@@ -56,12 +56,12 @@
 import { darkTheme, useThemeVars, useMessage, useDialog } from "naive-ui";
 import { onMounted, ref } from "vue";
 import { Add12Filled } from "@vicons/fluent";
-import { jFetch } from "@/utils/jFetch";
 import { ConstructionFilled, RefreshOutlined } from "@vicons/material";
 import { n } from "vue-router/dist/index-Cu9B0wDz.mjs";
 import { useConfigStore } from "@/stores/config";
 import { useRoute, useRouter } from "vue-router";
 import XDropdownInput from "@/components/XDropdownInput.vue";
+import { libraryFetch } from "@/utils/jFetch";
 
 const themeVars = useThemeVars();
 const openDrawer = ref(false);
@@ -99,9 +99,9 @@ const hadndlePathInput = async (p: string) => {
         return;
     } else if (!curFolderPath || newFolderPath != curFolderPath) {
         curFolderPath = newFolderPath;
-        const res = await jFetch({ method: "POST", url: "/api/library/folderList", data: { pathUrl: curFolderPath } });
+        const res = await libraryFetch.request("folderList", { pathUrl: curFolderPath });
         if (res.code == 200) {
-            const list: string[] = res.data.list;
+            const list: string[] = res.data!.list;
             pathOption = list.map((item) => {
                 return {
                     label: item,
@@ -125,8 +125,7 @@ const addLibraryFn = () => {
 };
 
 const toSave = async () => {
-    const url = drawerType.value == "add" ? "/api/library/add" : "api/library/edit";
-    const res = await jFetch({ method: "POST", url: url, data: { ...formData.value } });
+    const res = drawerType.value == "add" ? await libraryFetch.request("add", { ...formData.value }) : await libraryFetch.request("edit", { ...formData.value });
     if (res.code != 200) {
         message.error(res.msg || "");
         return;
@@ -149,7 +148,7 @@ const toRemove = async (item: JsonLibrary) => {
         positiveText: "确定",
         negativeText: "取消",
         onPositiveClick: async () => {
-            const res = await jFetch({ method: "POST", url: "/api/library/remove", data: { ...item } });
+            const res = await libraryFetch.request("remove", { ...item });
             if (res.code != 200) {
                 message.error(res.msg || "");
             }
@@ -160,7 +159,7 @@ const toRemove = async (item: JsonLibrary) => {
 };
 
 const toTest = async (item: EditLibraryType) => {
-    const res = await jFetch({ method: "POST", url: "/api/library/folderTest", data: { ...item } });
+    const res = await libraryFetch.request("folderTest", { ...item });
     if (res.code == 200) {
         message.success(res.msg || "");
     } else {
@@ -179,14 +178,13 @@ const toCancel = () => {
 };
 
 const getList = async () => {
-    const res = await jFetch({ method: "GET", url: "/api/library/getList" });
-
+    const res = await libraryFetch.request("getList");
     if (res.code != 200) {
         message.error(res.msg || "");
         return;
     }
     message.success(res.msg || "");
-    dataList.value = res.data;
+    dataList.value = res.data!;
 };
 
 onMounted(() => {

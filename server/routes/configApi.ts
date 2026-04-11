@@ -1,18 +1,23 @@
+import { readConfig } from '../utils/config';
+import { Router } from 'express';
+import { TransExpressRouter } from '@common/apis/tools/transExpressRouter';
+import { ConfigApiUrl } from '@common/apis/config';
+import { vertifyToken } from '../utils/user';
 
-import bcrypt from 'bcrypt';
-import { readConfig, writeConfig } from '../utils/config.js';
-import { JRoute } from '../utils/jroute.js';
+export function useConfigApi(router: Router) {
 
-export function useConfigApi(router: JRoute) {
-    router.get('/config', async (req, res) => {
-        if (!await router.vertifyToken(req, res)) {
-            return;
+    const configRouter = new TransExpressRouter(ConfigApiUrl, router);
+    configRouter.setRouter("getConfig", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
         }
         const config = readConfig();
-        res.json({
+        return {
             code: 200,
             data: config
-        });
+        };
     });
+
 
 };

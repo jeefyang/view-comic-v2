@@ -1,20 +1,15 @@
-import type { apiUrlsTrans } from "./apiUrlsTrans";
+import type { apiUrlsTrans, ResultType } from "./apiUrlsTrans";
 
 type EventType = "afterFetch";
 // 1. 提取事件处理函数的类型
 type EventListener<T extends ReturnType<typeof apiUrlsTrans>> = <K extends keyof T>(
     key: K,
-    res?: {
-        code?: number;
-        msg?: string;
-        data?: T[K]["to"];
-        err?: any;
-    }
+    res?: ResultType<T[K]["to"]>
 ) => Promise<any>;
 
 export class TransFetch<T extends ReturnType<typeof apiUrlsTrans>> {
 
-    constructor(public transObj: T) {
+    constructor(public transObj: T, public prevUrl: string = '') {
 
     }
 
@@ -43,31 +38,42 @@ export class TransFetch<T extends ReturnType<typeof apiUrlsTrans>> {
     }
 
     getHeaderFn: <K extends keyof T>(key: K) => Promise<HeadersInit | undefined> = async () => undefined;
-    async request<K extends keyof T>(key: K, data?: T[K]["from"]): Promise<{
-        code?: number,
-        msg?: string,
-        data?: T[K]["to"];
-        err?: any;
-    }> {
-        const item = this.transObj[key];
-        if (!item) {
-            //@ts-expect-error
-            throw new Error(`${key} not found`);
-        }
-        let url = item.url;
-        if (item.method == "GET" && data) {
-            url += "?" + new URLSearchParams(data).toString();
-        }
-        const headers = await this.getHeaderFn(key);
-        const res = await (await fetch(url, { method: item.method, body: item.method == "POST" ? JSON.stringify(data) : undefined, headers: headers })).json();
-        if (this.eventList["afterFetch"]) {
-            for (const fn of this.eventList["afterFetch"]!) {
-                if (await fn(key, res)) {
-                    break;
+
+    getErrFn: <K extends keyof T>(key: K, err: any) => Promise<ResultType<T[K]["to"]>> = async (key, err) => {
+        return {
+            code: 666,
+            msg: "请求失败",
+            err: err
+        };
+    };
+
+    /** 请求 */
+    async request<K extends keyof T>(key: K, data?: T[K]["from"]): Promise<ResultType<T[K]["to"]>> {
+        try {
+            const item = this.transObj[key];
+            if (!item) {
+                //@ts-expect-error
+                throw new Error(`${key} not found`);
+            }
+            let url = this.prevUrl + item.url;
+            if (item.method == "GET" && data) {
+                url += "?" + new URLSearchParams(data).toString();
+            }
+            const headers = await this.getHeaderFn(key);
+            const res = await (await fetch(url, { method: item.method, body: item.method == "POST" ? JSON.stringify(data) : undefined, headers: headers })).json();
+            if (this.eventList["afterFetch"]) {
+                for (const fn of this.eventList["afterFetch"]!) {
+                    if (await fn(key, res)) {
+                        break;
+                    }
                 }
             }
+            return res;
         }
-        return res;
+        catch (err) {
+            return this.getErrFn(key, err);
+        }
+
     }
 
 }

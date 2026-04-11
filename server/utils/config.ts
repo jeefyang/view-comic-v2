@@ -1,10 +1,6 @@
 // server/utils/config.ts
 import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import bcrypt from 'bcrypt';
-import dotenv from 'dotenv';
-import { CONFIG_FILE, DATA_DIR } from './cache.js';
+import { CONFIG_FILE } from './cache';
 
 /**
  * 读取配置，如果不存在则自动初始化

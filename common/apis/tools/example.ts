@@ -1,6 +1,6 @@
-import { apiUrlsTrans } from "./apiUrlsTrans.js";
-import { TransExpressRouter } from "./transExpressRouter.js";
-import { TransFetch } from "./transFetch.js";
+import { apiUrlsTrans } from "./apiUrlsTrans";
+import { TransExpressRouter } from "./transExpressRouter";
+import { TransFetch } from "./transFetch";
 
 
 const ExampleApiUrl = apiUrlsTrans("test/", {
@@ -23,3 +23,4 @@ const myFetch = new TransFetch(ExampleApiUrl);
 myFetch.request("testPost", { text: '123' }).then(res => {
     console.log(res);
 });
+

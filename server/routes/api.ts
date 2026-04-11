@@ -2,10 +2,12 @@ import { Router } from 'express';
 import { useConfigApi } from './configApi.js';
 import { useUserApi } from './userApi.js';
 import { useLibraryApi } from "./libraryApi.js";
-import { JRoute } from '../utils/jroute.js';
 
 const router: Router = Router();
-const jroute = new JRoute(router);
+
+useConfigApi(router);
+useUserApi(router);
+useLibraryApi(router);
 
 // 2. 【关键】在所有路由之后，定义 404 处理中间件
 router.use((req, res) => {
@@ -23,8 +25,6 @@ router.use((req, res) => {
     });
 });
 
-useConfigApi(jroute);
-useUserApi(jroute);
-useLibraryApi(jroute);
+
 
 export default router;

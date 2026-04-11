@@ -1,254 +1,245 @@
-import { JRoute } from "../utils/jroute.js";
+
 import path from 'path';
 import fs from "fs";
-import { LIBRARY_FILE } from "../utils/cache.js";
-import { editLib, getList, removeLib, addLib } from "../utils/library.js";
-import { getUserFromToken } from "../utils/user.js";
+import { editLib, getList, removeLib, addLib } from "../utils/library";
+import { getUserFromToken, vertifyToken } from "../utils/user";
+import { TransExpressRouter } from '@common/apis/tools/transExpressRouter';
+import { Router } from 'express';
+import { LibraryApiUrl } from '@common/apis/library';
 
-export function useLibraryApi(router: JRoute) {
 
-    router.get("/library/getList", async (req, res) => {
-        if (!await router.vertifyToken(req, res)) {
-            return;
+
+export function useLibraryApi(router: Router) {
+    const libraryRouter = new TransExpressRouter(LibraryApiUrl, router);
+    libraryRouter.setRouter('getList', async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
         }
-        res.json({
+        return {
             code: 200,
             data: getList(),
             msg: "获取成功"
-        } as JFetchReturnType);
+
+        };
     });
 
-    router.post("/library/folderList", async (req, res) => {
-        const token = await router.vertifyToken(req, res);
-        if (!token) {
-            return;
+    libraryRouter.setRouter("folderList", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
         }
+        const token = <string>(req.headers.token);
         const [user, err] = getUserFromToken(token);
         if (err) {
-            res.json({
+            return {
                 code: 500,
                 msg: err,
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (user?.type != 'admin') {
-            res.json({
+            return {
                 code: 502,
                 msg: "权限不足",
-            } as JFetchReturnType);
-            return;
+            };
         }
-        const { pathUrl } = req.body as JsonLibrary;
-        if (!fs.existsSync(pathUrl)) {
-            res.json({
+        const { pathUrl } = from;
+
+        if (!pathUrl || !fs.existsSync(pathUrl)) {
+            return {
                 code: 501,
                 msg: "文件夹不存在"
-            } as JFetchReturnType);
-            return;
+            };
         }
         let list = fs.readdirSync(pathUrl);
         list = list.filter(item => {
             const itemPath = path.join(pathUrl, item);
             return fs.lstatSync(itemPath).isDirectory();
         });
-        res.json({
+        return {
             code: 200,
             data: {
                 list
             }
-        } as JFetchReturnType);
-        return;
+        };
     });
 
-    router.post("/library/folderTest", async (req, res) => {
-        const token = await router.vertifyToken(req, res);
-        if (!token) {
-            return;
+    libraryRouter.setRouter("folderTest", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
         }
+        const token = <string>(req.headers.token);
         const [user, err] = getUserFromToken(token);
         if (err) {
-            res.json({
+            return {
                 code: 500,
                 msg: err,
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (user?.type != 'admin') {
-            res.json({
+            return {
                 code: 502,
                 msg: "权限不足",
-            } as JFetchReturnType);
-            return;
+            };
         }
-        const { pathUrl } = req.body as EditLibraryType;
+        const { pathUrl } = from;
         if (!pathUrl) {
-            res.json({
+            return {
                 code: 402,
                 msg: "请完善参数"
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (!fs.existsSync(pathUrl)) {
-            res.json({
+            return {
                 code: 501,
                 msg: "文件夹不存在"
-            } as JFetchReturnType);
-            return;
+            };
         }
-        res.json({
+        return {
             code: 200,
             msg: "测试成功"
-        } as JFetchReturnType);
+        };
     });
 
-
-
-    router.post("/library/add", async (req, res) => {
-        const token = await router.vertifyToken(req, res);
-        if (!token) {
-            return;
+    libraryRouter.setRouter("add", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
         }
+        const token = <string>(req.headers.token);
         const [user, err] = getUserFromToken(token);
         if (err) {
-            res.json({
+            return {
                 code: 500,
                 msg: err,
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (user?.type != 'admin') {
-            res.json({
+            return {
                 code: 502,
                 msg: "权限不足",
-            } as JFetchReturnType);
-            return;
+            };
         }
-        const { name, pathUrl } = req.body as EditLibraryType;
+        const { name, pathUrl } = from;
         if (!pathUrl || !name) {
-            res.json({
+            return {
                 code: 402,
                 msg: "请完善参数"
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (!fs.existsSync(pathUrl) || !fs.lstatSync(pathUrl).isDirectory()) {
-            res.json({
+            return {
                 code: 501,
                 msg: "文件夹不存在"
-            } as JFetchReturnType);
-            return;
+            };
         }
         const newData = { name, pathUrl };
         const resData = addLib(newData);
         if (resData[1]) {
-            res.json({
+            return {
                 code: 500,
                 msg: resData[1]
-            } as JFetchReturnType);
-            return;
+            };
         }
         res.json({
             code: 200,
             msg: "添加成功",
             data: resData[0]
-        } as JFetchReturnType);
-        return;
-    });
-
-    router.post("/library/remove", async (req, res) => {
-        const token = await router.vertifyToken(req, res);
-        if (!token) {
-            return;
-        }
-        const [user, err] = getUserFromToken(token);
-        if (err) {
-            res.json({
-                code: 500,
-                msg: err,
-            } as JFetchReturnType);
-            return;
-        }
+        });
         if (user?.type != 'admin') {
-            res.json({
+            return {
                 code: 502,
                 msg: "权限不足",
-            } as JFetchReturnType);
-            return;
+            };
         }
-        const { name } = req.body as EditLibraryType;
+    });
+
+    libraryRouter.setRouter("remove", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
+        }
+        const token = <string>(req.headers.token);
+        const [user, err] = getUserFromToken(token);
+        if (err) {
+            return {
+                code: 500,
+                msg: err,
+            };
+        }
+        if (user?.type != 'admin') {
+            return {
+                code: 502,
+                msg: "权限不足",
+            };
+        }
+        const { name } = from;
         if (!name) {
-            res.json({
+            return {
                 code: 402,
                 msg: "请完善参数"
-            } as JFetchReturnType);
-            return;
+            };
         }
         const resData = removeLib({ name });
         if (resData[1]) {
-            res.json({
+            return {
                 code: 500,
                 msg: resData[1]
-            } as JFetchReturnType);
-            return;
+            };
         }
-        res.json({
+        return {
             code: 200,
             msg: "删除成功",
             data: resData[0]
-        } as JFetchReturnType);
-        return;
+        };
     });
 
-    router.post("/library/edit", async (req, res) => {
-        const token = await router.vertifyToken(req, res);
-        if (!token) {
-            return;
+    libraryRouter.setRouter("edit", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
         }
+        const token = <string>(req.headers.token);
         const [user, err] = getUserFromToken(token);
         if (err) {
-            res.json({
+            return {
                 code: 500,
                 msg: err,
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (user?.type != 'admin') {
-            res.json({
+            return {
                 code: 502,
                 msg: "权限不足",
-            } as JFetchReturnType);
-            return;
+            };
         }
-        const { name, pathUrl, newName } = req.body as EditLibraryType;
+        const { name, pathUrl, newName } = from;
         if (!name || !pathUrl) {
-            res.json({
+            return {
                 code: 402,
                 msg: "请完善参数"
-            } as JFetchReturnType);
-            return;
+            };
         }
         if (!fs.existsSync(pathUrl) || !fs.lstatSync(pathUrl).isDirectory()) {
-            res.json({
+            return {
                 code: 501,
                 msg: "文件夹不存在"
-            } as JFetchReturnType);
-            return;
+            };
         }
         const newData: EditLibraryType = { name, pathUrl, newName };
         const resData = editLib(newData);
         if (resData[1]) {
-            res.json({
+            return {
                 code: 500,
                 msg: resData[1]
-            } as JFetchReturnType);
-            return;
+            };
         }
-        res.json({
+        return {
             code: 200,
-            msg: "删除成功",
+            msg: "修改成功",
             data: resData[0]
-        } as JFetchReturnType);
-        return;
+        };
     });
 
 }

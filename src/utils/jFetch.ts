@@ -1,61 +1,35 @@
 import { useConfigStore } from "@/stores/config";
+import { ConfigApiUrl } from "@common/apis/config";
+import { LibraryApiUrl } from "@common/apis/library";
+import type { ResultType } from "@common/apis/tools/apiUrlsTrans";
+import { TransFetch } from "@common/apis/tools/transFetch";
+import { UserApiUrl } from "@common/apis/user";
 
-const jFetchCBList: { code: number, fn: (res: Response) => void; }[] = [];
+const prevUrl = "api/";
+export const userFetch = new TransFetch(UserApiUrl, prevUrl);
+export const configFetch = new TransFetch(ConfigApiUrl, prevUrl);
+export const libraryFetch = new TransFetch(LibraryApiUrl, prevUrl);
 
-export function addJFetchCB(code: number, fn: (res: Response) => void) {
-    jFetchCBList.push({ code, fn });
-}
+[userFetch, configFetch, libraryFetch].forEach(item => {
+    item.getHeaderFn = async () => {
+        const config = useConfigStore();
+        const headers = new Headers({
+            "Content-Type": "application/json",
+            "token": config.token || "",
 
-export async function jFetch<T = any>(o: { method: "GET" | "POST", url: string, data?: any; }): Promise<JFetchReturnType<T>> {
-    const config = useConfigStore();
-    const headers = new Headers({
-        "Content-Type": "application/json",
-        "token": config.token || "",
+        });
+        return headers;
+    };
 
-    });
-    const list: { method: typeof o.method, fn: () => Promise<Response>; }[] = [
-        {
-            method: "GET",
-            fn: () => {
-                const param = new URLSearchParams(o.data || {});
-                return fetch(o.url + "?" + param, {
-                    method: o.method,
-                    headers
-                });
-            }
-        },
-        {
-            method: "POST",
-            fn: () => {
-                return fetch(o.url, {
-                    method: o.method,
-                    headers,
-                    body: JSON.stringify(o.data || {}),
-                });
-            }
-
-        }
-    ];
-    const item = list.find(c => c.method == o.method);
-    if (!item) {
-        return { code: -1, msg: `暂不支持此 ${o.method} 请求` };
-    }
-    try {
-        const res = await item.fn();
-        if (res.status == 401) {
+    item.addListener("afterFetch", async (key: string, res: ResultType<any> | undefined) => {
+        if (res?.code == 401) {
             console.warn("请登录");
-            for (let i = 0; i < jFetchCBList.length; i++) {
-                const cc = jFetchCBList[i]!;
-                if (cc.code == 401) {
-                    cc.fn(res);
-                }
-            }
-
+            const configStore = useConfigStore();
+            configStore.token = "";
+            configStore.save();
+            configStore.showLogin = true;
         }
-        return res.json();
-    }
-    catch (e) {
-        console.warn(e);
-        return { code: 666, msg: "请求失败", err: e };
-    }
-}
+        return;
+    });
+});
+

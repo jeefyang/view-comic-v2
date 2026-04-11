@@ -1,17 +1,16 @@
-import { apiUrlsTrans } from "./apiUrlsTrans";
-import { Router } from 'express';
+import { apiUrlsTrans, type ResultType } from "./apiUrlsTrans";
+import { Router, type Response, type Request } from 'express';
 
 export class TransExpressRouter<T extends ReturnType<typeof apiUrlsTrans>> {
     constructor(public transObj: T, public router: Router) {
 
     }
 
-
-    setRouter<K extends keyof T>(key: K, cb: (from: T[K]["from"]) => Promise<{ code?: number, msg?: string, data?: T[K]["to"]; err?: any; }>) {
+    setRouter<K extends keyof T>(key: K, cb: (from: T[K]["from"], req: Request, res: Response) => Promise<ResultType<T[K]["to"]>>) {
         const item = this.transObj[key];
-        const fn = async (from: any, res: any) => {
+        const fn = async (from: any, req: any, res: any) => {
             try {
-                const data = await cb(from);
+                const data = await cb(from, req, res);
                 if (data.err) {
                     const code = data.code || 500;
                     res.status(code).json({
@@ -39,17 +38,17 @@ export class TransExpressRouter<T extends ReturnType<typeof apiUrlsTrans>> {
             }
         };
         if (item?.method == "GET") {
-            this.router.get(item.url, async (req, res) => {
+            this.router.get("/"+item.url, async (req, res) => {
 
                 const from = req.query as T[keyof T]["from"];
-                await fn(from, res);
+                await fn(from, req, res);
                 return;
             });
         }
         else if (item?.method == "POST") {
-            this.router.post(item.url, async (req, res) => {
+            this.router.post("/"+item.url, async (req, res) => {
                 const from = req.body as T[keyof T]["from"];
-                await fn(from, res);
+                await fn(from, req, res);
                 return;
             });
         }

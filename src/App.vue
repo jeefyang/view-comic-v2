@@ -28,7 +28,6 @@ import { useDark } from "@vueuse/core";
 import { darkTheme, darkTheme as darkThemePreset } from "naive-ui";
 import AppBottomNav from "@/components/AppBottomNav.vue";
 import { useConfigStore } from "./stores/config";
-import { addJFetchCB, jFetch } from "./utils/jFetch";
 import XLogin from "./components/XLogin.vue";
 
 const configStore = useConfigStore();
@@ -45,11 +44,7 @@ const cachedViews = [
 ];
 
 onMounted(() => {
-    addJFetchCB(401, (res) => {
-        configStore.token=""
-        configStore.save()
-        configStore.showLogin = true;
-    });
+
 });
 </script>
 

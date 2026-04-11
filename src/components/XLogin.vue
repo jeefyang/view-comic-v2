@@ -18,7 +18,7 @@
 </template>
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
-import { jFetch } from "@/utils/jFetch";
+import { userFetch } from "@/utils/jFetch";
 import { useMessage } from "naive-ui";
 import { computed, reactive, ref } from "vue";
 
@@ -56,7 +56,7 @@ const toLogin = async () => {
         msg.warning("用户名/密码不能为空");
         return;
     }
-    const res = await jFetch<WebUserType>({ method: "POST", url: "/api/user/login", data: { ...formData } });
+    const res = await userFetch.request("login", { ...formData });
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;

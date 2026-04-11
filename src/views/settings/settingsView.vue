@@ -4,7 +4,7 @@
         <n-flex vertical style="gap: 10px">
             <XBlockButton class="btn" v-if="configStore.isLogin" @click="showEditUser = true">修改用户名/密码</XBlockButton>
             <XBlockButton class="btn" v-if="configStore.isLogin && configStore.userType == 'admin'" @click="showAddUser = true">添加用户</XBlockButton>
-            <XBlockButton class="btn" v-if="configStore.isLogin && configStore.userType == 'admin'" @click="showDeleteUser = true">删除用户</XBlockButton>
+            <XBlockButton class="btn" v-if="configStore.isLogin && configStore.userType == 'admin'" @click="showUserList = true">用户列表</XBlockButton>
 
             <XBlockButton class="btn">清除缩略图缓存</XBlockButton>
             <XBlockButton class="btn">清除历史记录</XBlockButton>
@@ -16,7 +16,7 @@
         </n-flex>
         <ModalEditUser v-model:show="showEditUser"></ModalEditUser>
         <ModalAddUser v-model:show="showAddUser"></ModalAddUser>
-        <ModalDeleteUser v-model:show="showDeleteUser"></ModalDeleteUser>
+        <ModalUserList v-model:show="showUserList"></ModalUserList>
     </div>
 </template>
 <script lang="ts" setup>
@@ -26,14 +26,14 @@ import { useDialog, useThemeVars } from "naive-ui";
 import { useConfigStore } from "@/stores/config";
 import ModalEditUser from "./components/ModalEditUser.vue";
 import ModalAddUser from "./components/ModalAddUser.vue";
-import ModalDeleteUser from "./components/ModalDeleteUser.vue";
+import ModalUserList from "./components/ModalUserList.vue";
 
 const dialog = useDialog();
 const themeVars = useThemeVars();
 const configStore = useConfigStore();
 
 const showEditUser = ref(false);
-const showDeleteUser = ref(false);
+const showUserList = ref(false);
 const showAddUser = ref(false);
 
 const handleClearCache = () => {
