@@ -38,9 +38,10 @@
             </n-form>
             <n-divider></n-divider>
             <n-flex>
-                <n-button @click="modelShow = false">取消</n-button>
+                <n-button type="info" @click="editItem = undefined">返回</n-button>
+                <n-button @click="toSubmit(editItem)" type="primary">提交</n-button>
                 <n-button v-if="editItem.type != 'admin'" @click="toDel(editItem)" type="error">删除</n-button>
-                <n-button type="primary" @click="editItem = undefined">返回</n-button>
+                <n-button @click="modelShow = false">取消</n-button>
             </n-flex>
         </template>
     </n-modal>
@@ -87,6 +88,9 @@ const onShow = () => {
 
 const toEdit = async (item: WebUserType) => {
     editItem.value = item;
+};
+
+const toSubmit = async (item: WebUserType) => { 
 };
 
 const getList = async () => {

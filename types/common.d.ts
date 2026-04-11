@@ -54,7 +54,7 @@ type EditUserType = {
     editType: 'add' | 'edit' | 'delete',
     adminUser?: string;
     adminToken?: string;
-    username?: string;
+    userUUID?: string;
     newUsername?: string;
     password?: string;
     newPassword?: string;
@@ -72,5 +72,6 @@ type WebUserType = {
     username: string;
     type: UserTypeType;
     group: string;
+    uuid: string;
 };
 

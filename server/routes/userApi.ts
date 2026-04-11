@@ -28,17 +28,17 @@ export function useUserApi(router: Router) {
         const target = data[0]!;
         return {
             code: 200,
-            data: { token: target.tokenData.token, username: target.userData.username, type: target.userData.type, group: target.userData.group },
+            data: { token: target.tokenData.token, username: target.userData.username, type: target.userData.type, group: target.userData.group,uuid:target.userData.uuid },
         };
 
     });
 
     userRouter.setRouter("edit", async (from, req, res) => {
-        const { username, password, newPassword, newUsername } = from;
-        if (!username || !password) {
+        const { userUUID, password, newPassword, newUsername } = from;
+        if (!userUUID || !password) {
             return {
                 code: 402,
-                msg: '用户名/密码不能为空',
+                msg: '用户uuid/密码不能为空',
             };
         }
         if (!newUsername && !newPassword) {
@@ -47,7 +47,7 @@ export function useUserApi(router: Router) {
                 msg: '请填写需要修改的用户名/密码',
             };
         }
-        const data = editUser({ editType: 'edit', username, password, newUsername, newPassword });
+        const data = editUser({ editType: 'edit', userUUID, password, newUsername, newPassword });
         if (data[1]) {
             return {
                 code: 500,
@@ -96,20 +96,20 @@ export function useUserApi(router: Router) {
     });
 
     userRouter.setRouter("delete", async (from, req, res) => {
-        const { adminToken, adminUser, username } = req.body;
+        const { adminToken, adminUser, userUUID } = from;
         if (!adminToken || !adminUser) {
             return {
                 code: 402,
                 msg: '管理员用户名/token不能为空',
             };
         }
-        if (!username) {
+        if (!userUUID) {
             return {
                 code: 402,
-                msg: '需要删除的用户名不能为空',
+                msg: '需要删除的用户名uuid不能为空',
             };
         }
-        const data = deleteUser({ editType: 'delete', adminToken, adminUser, username });
+        const data = deleteUser({ editType: 'delete', adminToken, adminUser, userUUID });
         if (data[1]) {
             return {
                 code: 500,
