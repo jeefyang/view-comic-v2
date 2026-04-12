@@ -1,5 +1,6 @@
 <template>
-    <n-modal v-model:show="modelShow" @after-enter="onShow" preset="card" :title="editItem ? `用户修改` : '用户列表'" style="width: 600px">
+    <n-modal v-model:show="modelShow" @after-enter="onShow" preset="card" :title="editItem ? `用户修改` : '用户列表'"
+        style="width: 600px">
         <template v-if="!editItem">
             <n-flex vertical style="max-height: 40vh; overflow: auto">
                 <n-table :bordered="false" :single-line="false">
@@ -90,7 +91,7 @@ const toEdit = async (item: WebUserType) => {
     editItem.value = item;
 };
 
-const toSubmit = async (item: WebUserType) => { 
+const toSubmit = async (item: WebUserType) => {
 };
 
 const getList = async () => {
@@ -109,7 +110,7 @@ const toDel = async (item: WebUserType) => {
         positiveText: "确定",
         negativeText: "取消",
         onPositiveClick: async () => {
-            const res = await userFetch.request("delete", { username: item.username, adminToken: configSotre.token, adminUser: configSotre.username });
+            const res = await userFetch.request("delete", { userUUID: item.uuid, adminToken: configSotre.token, adminUUID: configSotre.userUUID });
             if (res.code != 200) {
                 msg.error(res.msg || "");
                 return;

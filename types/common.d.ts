@@ -51,8 +51,8 @@ type EditLibraryType = {
 
 
 type EditUserType = {
-    editType: 'add' | 'edit' | 'delete',
-    adminUser?: string;
+    editType: 'add' | 'edit' | 'delete'|'editGroup',
+    adminUUID?: string;
     adminToken?: string;
     userUUID?: string;
     newUsername?: string;

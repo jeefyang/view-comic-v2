@@ -12,7 +12,8 @@
                     <n-input v-model:value="formData.repeatPassword" type="password" placeholder="请输入密码" />
                 </n-form-item>
                 <n-form-item path="group" label="用户组">
-                    <XDropdownInput v-model:value="formData.group" :options="groupOptions" placeholder="输入路径,/添加提示"></XDropdownInput>
+                    <XDropdownInput v-model:value="formData.group" :options="groupOptions" placeholder="输入路径,/添加提示">
+                    </XDropdownInput>
                 </n-form-item>
             </n-form>
             <template #footer>
@@ -94,7 +95,7 @@ const toAdd = async () => {
         msg.warning("密码不一致");
         return;
     }
-    const res = await userFetch.request("add", { ...formData, adminToken: configSotre.token, adminUser: configSotre.username });
+    const res = await userFetch.request("add", { ...formData, adminToken: configSotre.token, adminUUID: configSotre.userUUID });
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;

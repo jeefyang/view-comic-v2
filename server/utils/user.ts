@@ -1,6 +1,6 @@
 import fs from 'fs';
 import bcrypt from 'bcrypt';
-import { addTokenCache, tokenCache, User_FILE } from './cache.js';
+import { addTokenCache, tokenCache, User_FILE } from './cache';
 import { nanoid } from "nanoid";
 import { type Request, type Response } from "express";
 
@@ -88,10 +88,10 @@ export function addUser(editData: EditUserType): [JsonUser | undefined, any] {
         }
         // 验证
         // 管理员模式
-        if (editData.adminUser) {
+        if (editData.adminUUID) {
             const adminUser = list.find(item => item.type === 'admin');
-            if (adminUser?.username != editData.adminUser) {
-                return [undefined, '管理员用户名错误'];
+            if (adminUser?.uuid != editData.adminUUID) {
+                return [undefined, '管理员用户uuid错误'];
             }
             if (!editData.adminToken) {
                 return [undefined, '管理员用户令牌错误'];
@@ -146,6 +146,50 @@ export function verifyUser(token: string) {
     return tokenCache.findIndex(c => c.token == token) != -1;
 }
 
+export function editUserGroup(editData:EditUserType):[JsonConfig|undefined,any]{
+try {
+         const list = readUsers();
+        if (list.length == 0) {
+            throw new Error('用户数据库未初始化');
+        }
+        // 验证
+        // 管理员模式
+        if (editData.adminUUID) {
+            const adminUser = list.find(item => item.type === 'admin');
+            if (adminUser?.uuid != editData.adminUUID) {
+                return [undefined, '管理员用户uuid错误'];
+            }
+            if (!editData.adminToken) {
+                return [undefined, '管理员用户令牌错误'];
+            }
+            const adminToken = tokenCache.find(c => c.uuid == adminUser.uuid && c.token == editData.adminToken)?.token;
+            if (!adminToken) {
+                return [undefined, '管理员用户令牌错误,请重新登录`'];
+            }
+        }
+        else {
+            return [undefined, '请选择管理员用户'];
+        }
+        if (!editData.group) {
+            return [undefined, '请选择用户组'];
+        }
+
+        const index = list.findIndex(item => item.uuid === editData.userUUID);
+        if (index == -1) {
+            return [undefined, '用户不存在'];
+        }
+        const item = { ...list[index] };
+        item.group=editData.group
+        item.modifyTime = new Date().getTime();
+        list[index] = item;
+        updateUsers(list);
+        return [item, undefined];
+    } catch (err) {
+        console.error('❌ 修改用户失败:', err);
+        return [undefined, err];
+    }
+}
+
 export function editUser(editData: EditUserType): [JsonUser | undefined, any] {
     try {
         const list = readUsers();
@@ -153,11 +197,11 @@ export function editUser(editData: EditUserType): [JsonUser | undefined, any] {
             throw new Error('用户数据库未初始化');
         }
         // 验证
-        if (!editData.username || !editData.password) {
-            return [undefined, '用户名或密码不能为空'];
+        if (!editData.userUUID || !editData.password) {
+            return [undefined, '用户uuid或密码不能为空'];
         }
 
-        const index = list.findIndex(item => item.username === editData.username);
+        const index = list.findIndex(item => item.uuid === editData.userUUID);
         if (index == -1) {
             return [undefined, '用户不存在'];
         }
@@ -179,10 +223,6 @@ export function editUser(editData: EditUserType): [JsonUser | undefined, any] {
             const passwordHash = bcrypt.hashSync(editData.newPassword, saltRounds);
             item.passwordHash = passwordHash;
         }
-        // 修改分组
-        if (editData.group && item.type != 'admin') {
-            item.group = editData.group;
-        }
         item.modifyTime = new Date().getTime();
         list[index] = item;
         updateUsers(list);
@@ -201,9 +241,9 @@ export function deleteUser(editData: EditUserType): [JsonUser | undefined, any] 
         }
         // 验证
         // 管理员模式
-        if (editData.adminUser) {
+        if (editData.adminUUID) {
             const adminUser = list.find(item => item.type === 'admin');
-            if (adminUser?.username != editData.adminUser) {
+            if (adminUser?.uuid != editData.adminUUID) {
                 return [undefined, '管理员用户名错误'];
             }
             if (!editData.adminToken) {
@@ -217,10 +257,10 @@ export function deleteUser(editData: EditUserType): [JsonUser | undefined, any] 
         else {
             return [undefined, '请选择管理员用户'];
         }
-        if (!editData.username) {
-            return [undefined, '用户名不能为空'];
+        if (!editData.userUUID) {
+            return [undefined, '用户uuid不能为空'];
         }
-        const index = list.findIndex(item => item.username === editData.username);
+        const index = list.findIndex(item => item.uuid === editData.userUUID);
         if (index == -1) {
             return [undefined, '用户不存在'];
         }

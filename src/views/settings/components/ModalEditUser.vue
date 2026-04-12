@@ -81,7 +81,7 @@ const toEdit = async () => {
         msg.error("密码不一致");
         return;
     }
-    const res = await userFetch.request("edit", { ...formData, username: configSotre.username });
+    const res = await userFetch.request("edit", { ...formData, userUUID: configSotre.userUUID });
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;

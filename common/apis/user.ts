@@ -10,17 +10,17 @@ export const UserApiUrl = apiUrlsTrans("user/", {
     groupList: { method: "GET", to: {} as string[] },
     add: {
         method: "POST", from: {} as {
-            newUsername: string, adminToken: string, newPassword: string, adminUser: string, group: string;
+            newUsername: string, adminToken: string, newPassword: string, adminUUID: string, group: string;
         }
     },
     editGroup: {
         method: "POST", from: {} as {
-            adminToken: string, adminUser: string, userUUID: string, group: string;
+            adminToken: string, adminUUID: string, userUUID: string, group: string;
         }
     },
     delete: {
         method: "POST", from: {} as {
-            adminToken: string, adminUser: string, userUUID: string;
+            adminToken: string, adminUUID: string, userUUID: string;
         }
     },
     list: { method: "GET", to: {} as WebUserType[] }

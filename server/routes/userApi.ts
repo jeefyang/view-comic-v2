@@ -2,9 +2,7 @@
 import { TransExpressRouter } from "@common/apis/tools/transExpressRouter.js";
 import { addUser, deleteUser, editUser, getUserFromToken, getUserGroupList, readUsers, userLogin, vertifyToken } from "../utils/user.js";
 import { Router } from 'express';
-import { UserApiUrl } from "@common/apis/user.js";
-import { a } from "vue-router/dist/index-Cu9B0wDz.mjs";
-
+import { UserApiUrl } from "@common/apis/user";
 
 export function useUserApi(router: Router) {
 
@@ -58,7 +56,34 @@ export function useUserApi(router: Router) {
             code: 200,
             msg: "修改成功"
         };
+    });
 
+    userRouter.setRouter("editGroup", async (from, req, res) => {
+        const { userUUID, adminToken, adminUUID,group} = from;
+        if (!userUUID ) {
+            return {
+                code: 402,
+                msg: '用户uuid不能为空',
+            };
+        }
+        if (!group) {
+            return {
+                code: 402,
+                msg: '请填写需要修改的分组',
+            };
+        }
+        
+        const data = editUser({ editType: 'edit', userUUID, adminToken, adminUUID });
+        if (data[1]) {
+            return {
+                code: 500,
+                msg: data[1],
+            };
+        }
+        return {
+            code: 200,
+            msg: "修改成功"
+        };
     });
 
     userRouter.setRouter("groupList", async (from, req, res) => {
@@ -69,7 +94,7 @@ export function useUserApi(router: Router) {
     });
 
     userRouter.setRouter("add", async (from, req, res) => {
-        const { newUsername, adminToken, newPassword, adminUser, group } = from;
+        const { newUsername, adminToken, newPassword, adminUUID, group } = from;
         if (!adminToken) {
             return {
                 code: 402,
@@ -82,7 +107,7 @@ export function useUserApi(router: Router) {
                 msg: '用户名/密码不能为空',
             };
         }
-        const data = addUser({ editType: 'add', adminToken, newUsername, newPassword, adminUser, group });
+        const data = addUser({ editType: 'add', adminToken, newUsername, newPassword, adminUUID, group });
         if (data[1]) {
             return {
                 code: 500,
@@ -96,11 +121,11 @@ export function useUserApi(router: Router) {
     });
 
     userRouter.setRouter("delete", async (from, req, res) => {
-        const { adminToken, adminUser, userUUID } = from;
-        if (!adminToken || !adminUser) {
+        const { adminToken, adminUUID, userUUID } = from;
+        if (!adminToken || !adminUUID) {
             return {
                 code: 402,
-                msg: '管理员用户名/token不能为空',
+                msg: '管理员用户uuid/token不能为空',
             };
         }
         if (!userUUID) {
@@ -109,7 +134,7 @@ export function useUserApi(router: Router) {
                 msg: '需要删除的用户名uuid不能为空',
             };
         }
-        const data = deleteUser({ editType: 'delete', adminToken, adminUser, userUUID });
+        const data = deleteUser({ editType: 'delete', adminToken, adminUUID, userUUID });
         if (data[1]) {
             return {
                 code: 500,
@@ -145,7 +170,7 @@ export function useUserApi(router: Router) {
         const users = readUsers();
         return {
             code: 200,
-            data: users.map(c => { return { username: c.username, type: c.type, group: c.group }; })
+            data: users.map(c => { return { username: c.username, type: c.type, group: c.group,uuid:c.uuid }; })
         };
     });
 
