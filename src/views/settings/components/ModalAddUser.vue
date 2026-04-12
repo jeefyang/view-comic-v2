@@ -1,5 +1,5 @@
 <template>
-    <n-modal v-model:show="modelShow">
+    <n-modal v-model:show="modelShow" @after-enter="onShow">
         <n-card style="width: 600px" title="添加用户" :bordered="false" role="dialog" aria-modal="true">
             <n-form ref="formRef" :model="formData">
                 <n-form-item path="username" label="用户名">
@@ -12,7 +12,7 @@
                     <n-input v-model:value="formData.repeatPassword" type="password" placeholder="请输入密码" />
                 </n-form-item>
                 <n-form-item path="group" label="用户组">
-                    <XDropdownInput v-model:value="formData.group" :options="groupOptions" placeholder="输入路径,/添加提示">
+                    <XDropdownInput v-model:value="formData.group" :options="groupOptions" placeholder="请输入用户组">
                     </XDropdownInput>
                 </n-form-item>
             </n-form>
@@ -57,25 +57,26 @@ const modelShow = computed({
         return props.show;
     },
     set(value: boolean) {
-        formData.newPassword = "";
-        formData.newUsername = "";
-        formData.repeatPassword = "";
+
         emits("update:show", value);
     }
 });
 
-watch(
-    () => props.show,
-    (v) => {
-        if (v) {
-            getGroupList();
-        }
-    }
-);
+const onShow = () => {
+    formData.newPassword = "";
+    formData.newUsername = "";
+    formData.repeatPassword = "";
+    formData.group = ""
+    getGroupList()
+}
+
 
 const getGroupList = async () => {
     const res = await userFetch.request("groupList");
-    console.log(res);
+    if (res.data) {
+        groupOptions.value = res.data.map(c => { return { label: c, key: c } })
+    }
+
 };
 
 const toAdd = async () => {

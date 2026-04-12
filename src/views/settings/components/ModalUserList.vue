@@ -18,7 +18,6 @@
                             <td style="flex: 0.25">{{ item.type }}</td>
                             <td style="flex: 0.25">{{ item.group }}</td>
                             <td style="flex: 0.25">
-                                <!-- <n-button v-if="item.type != 'admin'" @click="toDel(item)" type="error">删除</n-button> -->
                                 <n-button v-if="item.type != 'admin'" type="primary" @click="toEdit(item)">修改</n-button>
                             </td>
                         </tr>
@@ -33,8 +32,22 @@
         </template>
         <template v-else>
             <n-form>
-                <n-form-item label="用户名">
+                <n-form-item label="用户名:">
                     {{ editItem.username }}
+                </n-form-item>
+            </n-form>
+            <n-form>
+                <n-form-item label="用户组:">
+                    <n-flex vertical>
+                        <div>
+                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="groupList"
+                                @select="toSelectGroup">
+                                <n-button>分组</n-button>
+                            </n-dropdown>
+                        </div>
+
+                        <n-input v-model:value="editGroup" placeholder="请输入用户组"></n-input>
+                    </n-flex>
                 </n-form-item>
             </n-form>
             <n-divider></n-divider>
@@ -52,7 +65,6 @@ import { useConfigStore } from "@/stores/config";
 import { userFetch } from "@/utils/jFetch";
 import { useDialog, useMessage } from "naive-ui";
 import { computed, ref } from "vue";
-import XDropdownInput from "@/components/XDropdownInput.vue";
 
 const props = defineProps<{
     show: boolean;
@@ -68,6 +80,9 @@ const configSotre = useConfigStore();
 const msg = useMessage();
 
 const editItem = ref(<WebUserType | undefined>undefined);
+const groupList = ref(<{ label: string, key: string }[]>[])
+
+const editGroup = ref("")
 
 const emits = defineEmits<{
     (e: "update:show", value: boolean): void;
@@ -78,9 +93,11 @@ const modelShow = computed({
         return props.show;
     },
     set(value: boolean) {
+        editGroup.value = ""
         emits("update:show", value);
     }
 });
+
 
 const onShow = () => {
     editItem.value = undefined;
@@ -89,9 +106,23 @@ const onShow = () => {
 
 const toEdit = async (item: WebUserType) => {
     editItem.value = item;
+    editGroup.value = item.group
 };
 
 const toSubmit = async (item: WebUserType) => {
+    if (!editGroup.value) {
+        return msg.warning("请输入用户组")
+    }
+    const res = await userFetch.request("editGroup", {
+        adminToken: configSotre.token, adminUUID: configSotre.userUUID, userUUID: item.uuid, group: editGroup.value
+    })
+    if (res.code != 200) {
+        return msg.error(res.msg!)
+    }
+    msg.success(res.msg!)
+    editItem.value = undefined
+    getList()
+
 };
 
 const getList = async () => {
@@ -100,8 +131,15 @@ const getList = async () => {
         msg.error(res.msg || "");
         return;
     }
-    datalist.value = res.data!;
+    const list = res.data || []
+    datalist.value = list;
+    const arr = [...new Set(list.filter(c => c.group).map(c => c.group))]
+    groupList.value = arr.map(c => { return { label: c, key: c } })
 };
+
+const toSelectGroup = (item: string) => {
+    editGroup.value = item
+}
 
 const toDel = async (item: WebUserType) => {
     dialog.warning({

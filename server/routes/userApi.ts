@@ -1,6 +1,6 @@
 
 import { TransExpressRouter } from "@common/apis/tools/transExpressRouter.js";
-import { addUser, deleteUser, editUser, getUserFromToken, getUserGroupList, readUsers, userLogin, vertifyToken } from "../utils/user.js";
+import { addUser, deleteUser, editUser, editUserGroup, getUserFromToken, getUserGroupList, readUsers, userLogin, vertifyToken } from "../utils/user.js";
 import { Router } from 'express';
 import { UserApiUrl } from "@common/apis/user";
 
@@ -73,7 +73,7 @@ export function useUserApi(router: Router) {
             };
         }
         
-        const data = editUser({ editType: 'edit', userUUID, adminToken, adminUUID });
+        const data = editUserGroup({ editType: 'editGroup', userUUID, adminToken, adminUUID,group });
         if (data[1]) {
             return {
                 code: 500,
