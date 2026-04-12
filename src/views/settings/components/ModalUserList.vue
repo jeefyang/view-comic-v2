@@ -27,7 +27,7 @@
             <n-divider></n-divider>
             <n-flex>
                 <n-button class="mr-4" @click="modelShow = false">取消</n-button>
-                <n-button type="primary" @click="getList()">刷新</n-button>
+                <n-button type="primary" @click="toRefresh">刷新</n-button>
             </n-flex>
         </template>
         <template v-else>
@@ -38,7 +38,7 @@
             </n-form>
             <n-form>
                 <n-form-item label="用户组:">
-                    <n-flex vertical>
+                    <n-flex vertical style="width:100%;">
                         <div>
                             <n-dropdown placement="bottom-start" trigger="click" size="small" :options="groupList"
                                 @select="toSelectGroup">
@@ -125,6 +125,15 @@ const toSubmit = async (item: WebUserType) => {
 
 };
 
+const toRefresh = async () => {
+    const res = (await getList())!
+    if (res.code == 200) {
+        msg.success(res.msg!)
+        return
+    }
+    msg.error(res.msg!)
+}
+
 const getList = async () => {
     const res = await userFetch.request("list");
     if (res.code != 200) {
@@ -135,6 +144,7 @@ const getList = async () => {
     datalist.value = list;
     const arr = [...new Set(list.filter(c => c.group).map(c => c.group))]
     groupList.value = arr.map(c => { return { label: c, key: c } })
+    return res
 };
 
 const toSelectGroup = (item: string) => {
@@ -154,6 +164,7 @@ const toDel = async (item: WebUserType) => {
                 return;
             }
             msg.success("删除成功");
+            editItem.value = undefined
             getList();
         }
     });

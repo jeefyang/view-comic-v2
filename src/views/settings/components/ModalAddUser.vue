@@ -12,8 +12,16 @@
                     <n-input v-model:value="formData.repeatPassword" type="password" placeholder="请输入密码" />
                 </n-form-item>
                 <n-form-item path="group" label="用户组">
-                    <XDropdownInput v-model:value="formData.group" :options="groupOptions" placeholder="请输入用户组">
-                    </XDropdownInput>
+                    <n-flex vertical style="width:100%">
+                        <div>
+                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="groupOptions"
+                                @select="(v) => formData.group = v">
+                                <n-button>分组</n-button>
+                            </n-dropdown>
+                        </div>
+
+                        <n-input v-model:value="formData.group" placeholder="请输入用户组"></n-input>
+                    </n-flex>
                 </n-form-item>
             </n-form>
             <template #footer>
