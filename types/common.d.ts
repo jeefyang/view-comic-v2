@@ -26,6 +26,10 @@ type JsonLibrary = {
 type ViewFileType = {
     name: string;
     size: number;
+    createTime:number;
+    updateTime:number;
+    ext:string;
+    isFolder:boolean;
 };
 
 

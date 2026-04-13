@@ -9,6 +9,16 @@ useConfigApi(router);
 useUserApi(router);
 useLibraryApi(router);
 
+// 文件读取
+router.get("/file/:{path}", async (req, res) => {
+
+})
+
+// 缩略图
+router.get("/Thumbnail/:{path}", async (req, res) => {
+
+})
+
 // 2. 【关键】在所有路由之后，定义 404 处理中间件
 router.use((req, res) => {
     // 设置状态码为 404

@@ -5,6 +5,7 @@ import { vertifyToken } from '../utils/user';
 import { getLibPathByUUID } from '../utils/library';
 import fs from 'fs';
 import path from "path";
+import { getViewFile } from '../utils/view';
 
 export function useViewApi(router: Router) {
     const viewRouter = new TransExpressRouter(ViewApiUrl, router);
@@ -42,15 +43,19 @@ export function useViewApi(router: Router) {
                     msg: "路径不存在"
                 };
             }
-            const list= fs.readdirSync(url);
-            const fileList=list.map(c=>{
-                const stat=fs.statSync(path.join(url,c));
-                const file:ViewFileType={
-                    name:c,
-                    size:stat.size,
-                    createTime:stat.ctimeMs
+            const list = fs.readdirSync(url);
+            const fileList: ViewFileType[] = []
+            list.every(c => {
+                const file = getViewFile(path.join(url, c))
+                if (!file) {
+                    return
                 }
+                fileList.push(file)
             })
+            return {
+                data: fileList,
+                msg: "操作成功"
+            }
         }
         catch (e) {
             return {
