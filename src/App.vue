@@ -16,7 +16,7 @@
                     <!-- 底部导航（仅在需要时显示） -->
                     <AppBottomNav v-if="$route.meta.showBottomNav" />
                 </div>
-                <XLogin v-model:show="configStore.showLogin"</XLogin>
+                <XLogin v-model:show="config.showLogin"</XLogin>
             </n-message-provider>
         </n-dialog-provider>
     </n-config-provider>
@@ -29,8 +29,10 @@ import { darkTheme, darkTheme as darkThemePreset } from "naive-ui";
 import AppBottomNav from "@/components/AppBottomNav.vue";
 import { useConfigStore } from "./stores/config";
 import XLogin from "./components/XLogin.vue";
+import { configFetch, libraryFetch, userFetch } from "./utils/jFetch";
+import type { ResSendType } from "@common/apis/tools/apiUrlsTrans";
 
-const configStore = useConfigStore();
+const config = useConfigStore();
 
 // 响应式暗色主题（可选）
 const isDark = useDark();
@@ -44,7 +46,27 @@ const cachedViews = [
 ];
 
 onMounted(() => {
+[userFetch, configFetch, libraryFetch].forEach(item => {
+    item.getHeaderFn = async () => {
+        const headers = new Headers({
+            "Content-Type": "application/json",
+            "token": config.token || "",
 
+        });
+        return headers;
+    };
+
+    item.addListener("afterFetch", async (key: string, res: ResSendType<any> | undefined) => {
+        if (res?.code == 401) {
+            console.warn("请登录");
+            const configStore = useConfigStore();
+            configStore.token = "";
+            configStore.save();
+            configStore.showLogin = true;
+        }
+        return;
+    });
+});
 });
 </script>
 

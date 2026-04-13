@@ -14,9 +14,18 @@ type JFetchReturnType<D = any> = {
     err?: any;
 };
 
+type SortNameType = "name" | "extension" | "size" | "createTime" | "updateTime" | 'number';
+
+
 type JsonLibrary = {
     name: string; pathUrl: string; uuid: string; createTime?: number;
     modifyTime?: number; groupList?: string[];
+    editUUID?: string;
+};
+
+type ViewFileType = {
+    name: string;
+    size: number;
 };
 
 

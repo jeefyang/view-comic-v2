@@ -1,4 +1,4 @@
-import { apiUrlsTrans, type ResultType } from "./apiUrlsTrans";
+import { apiUrlsTrans, type ResSendType } from "./apiUrlsTrans";
 import { Router, type Response, type Request } from 'express';
 
 export class TransExpressRouter<T extends ReturnType<typeof apiUrlsTrans>> {
@@ -6,7 +6,7 @@ export class TransExpressRouter<T extends ReturnType<typeof apiUrlsTrans>> {
 
     }
 
-    setRouter<K extends keyof T>(key: K, cb: (from: T[K]["from"], req: Request, res: Response) => Promise<ResultType<T[K]["to"]>>) {
+    setRouter<K extends keyof T>(key: K, cb: (from: T[K]["from"], req: Request, res: Response) => Promise<ResSendType<T[K]["to"]>>) {
         const item = this.transObj[key];
         const fn = async (from: any, req: any, res: any) => {
             try {
@@ -28,10 +28,10 @@ export class TransExpressRouter<T extends ReturnType<typeof apiUrlsTrans>> {
                 });
             }
             catch (err) {
-                const code = 500;
+                const code = 503;
                 res.status(code).json({
                     code: code,
-                    msg: "服务器错误",
+                    msg: "服务器数据冲突",
                     err: err
                 });
                 return;

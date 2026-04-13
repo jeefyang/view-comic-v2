@@ -7,6 +7,7 @@ export const LibraryApiUrl = apiUrlsTrans("library/", {
     add: { method: "POST", from: {} as EditLibraryType, to: {} as JsonLibrary },
     remove: { method: "POST", from: {} as EditLibraryType, to: {} as JsonLibrary },
     edit: { method: "POST", from: {} as EditLibraryType, to: {} as JsonLibrary },
+    update: { method: "POST", from: {} as EditLibraryType, to: {} as JsonLibrary }
 });
 
 

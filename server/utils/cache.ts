@@ -24,7 +24,7 @@ if (!fs.existsSync(DATA_DIR)) {
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 export let tokenCache: UserTokenType[] = [];
-const tokenLimit = 3;
+const tokenLimit = 6;
 
 export function readTokenCache() {
     if (!fs.existsSync(TOTKEN_FILE)) {

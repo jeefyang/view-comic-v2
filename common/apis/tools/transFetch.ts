@@ -1,10 +1,10 @@
-import type { apiUrlsTrans, ResultType } from "./apiUrlsTrans";
+import type { apiUrlsTrans, ResSendType } from "./apiUrlsTrans";
 
 type EventType = "afterFetch";
 // 1. 提取事件处理函数的类型
 type EventListener<T extends ReturnType<typeof apiUrlsTrans>> = <K extends keyof T>(
     key: K,
-    res?: ResultType<T[K]["to"]>
+    res?: ResSendType<T[K]["to"]>
 ) => Promise<any>;
 
 export class TransFetch<T extends ReturnType<typeof apiUrlsTrans>> {
@@ -39,7 +39,7 @@ export class TransFetch<T extends ReturnType<typeof apiUrlsTrans>> {
 
     getHeaderFn: <K extends keyof T>(key: K) => Promise<HeadersInit | undefined> = async () => undefined;
 
-    getErrFn: <K extends keyof T>(key: K, err: any) => Promise<ResultType<T[K]["to"]>> = async (key, err) => {
+    getErrFn: <K extends keyof T>(key: K, err: any) => Promise<ResSendType<T[K]["to"]>> = async (key, err) => {
         return {
             code: 666,
             msg: "请求失败",
@@ -48,7 +48,7 @@ export class TransFetch<T extends ReturnType<typeof apiUrlsTrans>> {
     };
 
     /** 请求 */
-    async request<K extends keyof T>(key: K, data?: T[K]["from"]): Promise<ResultType<T[K]["to"]>> {
+    async request<K extends keyof T>(key: K, data?: T[K]["from"]): Promise<ResSendType<T[K]["to"]>> {
         try {
             const item = this.transObj[key];
             if (!item) {

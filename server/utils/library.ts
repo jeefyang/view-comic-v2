@@ -1,6 +1,7 @@
 import fs from "fs";
 import { LIBRARY_FILE } from "../utils/cache";
 import { nanoid } from 'nanoid';
+import { getUserFromToken } from "./user";
 
 let libCache: JsonLibrary[] = [];
 
@@ -13,12 +14,27 @@ export function readLibs(): JsonLibrary[] {
     return libCache;
 };
 
-export function getList(): JsonLibrary[] {
+export function getList(token?: string): [JsonLibrary[] | undefined, any] {
     if (!libCache.length) {
         readLibs();
     }
-    return libCache;
+    let list = getLibCache();
+    if (token) {
+        const data = getUserFromToken(token);
+        if (data[1]) {
+            return [undefined, "token不存在"];
+        }
+        const user = data[0]!;
+        if (user.type != 'admin') {
+            list = list.filter(c => !c.groupList || c.groupList.length == 0 || c.groupList.includes(user.group));
+        }
+    }
+    return [list, undefined];
 };
+
+export function getLibCache() {
+    return libCache.map(c => ({ ...c }));
+}
 
 
 export function updateLibs() {
@@ -40,6 +56,7 @@ export function addLib(target: EditLibraryType): [JsonLibrary | undefined, any] 
         name: target.name,
         pathUrl: target.pathUrl,
         uuid: nanoid(8),
+        editUUID: nanoid(8),
         groupList: target.groupList || [],
         createTime: new Date().getTime(),
         modifyTime: new Date().getTime()
@@ -67,12 +84,13 @@ export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any]
     if (!target.uuid) {
         return [undefined, "请输入uuid"];
     }
-    const list = getList();
-    const index = list.findIndex(item => item.uuid == target.uuid);
+
+    const index = libCache.findIndex(item => item.uuid == target.uuid);
+
     if (index == -1) {
         return [undefined, '未找到'];
     }
-    const item: JsonLibrary = { ...list[index] };
+    const item: JsonLibrary = { ...libCache[index] };
     if (target.newName) {
         item.name = target.newName;
     }
@@ -83,13 +101,20 @@ export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any]
         item.groupList = target.groupList;
     }
     item.modifyTime = new Date().getTime();
-    list[index] = item;
+    item.editUUID = nanoid(8);
+    libCache[index] = item;
     updateLibs();
     return [item, undefined];
 };
 
-export function getLibPathByUUID(uuid: string): [string | undefined, any] {
-    const index = libCache.findIndex(item => item.uuid == uuid);
+export function getLibPathByUUID(uuid?: string, editUUID?: string): [string | undefined, any] {
+    let index = -1;
+    if (uuid) {
+        index = libCache.findIndex(item => item.uuid == uuid);
+    }
+    else if (editUUID) {
+        index = libCache.findIndex(item => item.editUUID == editUUID);
+    }
     if (index == -1) {
         return [undefined, '未找到'];
     }

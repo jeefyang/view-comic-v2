@@ -12,10 +12,9 @@
                     <n-input v-model:value="formData.repeatPassword" type="password" placeholder="请输入密码" />
                 </n-form-item>
                 <n-form-item path="group" label="用户组">
-                    <n-flex vertical style="width:100%">
+                    <n-flex vertical style="width: 100%">
                         <div>
-                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="groupOptions"
-                                @select="(v) => formData.group = v">
+                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="configSotre.groupList" @select="(v) => (formData.group = v)">
                                 <n-button>分组</n-button>
                             </n-dropdown>
                         </div>
@@ -51,8 +50,6 @@ const formData = reactive({
     group: ""
 });
 
-const groupOptions = ref(<{ label: string; key: string }[]>[]);
-
 const configSotre = useConfigStore();
 const msg = useMessage();
 
@@ -65,7 +62,6 @@ const modelShow = computed({
         return props.show;
     },
     set(value: boolean) {
-
         emits("update:show", value);
     }
 });
@@ -74,17 +70,15 @@ const onShow = () => {
     formData.newPassword = "";
     formData.newUsername = "";
     formData.repeatPassword = "";
-    formData.group = ""
-    getGroupList()
-}
-
+    formData.group = "";
+    getGroupList();
+};
 
 const getGroupList = async () => {
-    const res = await userFetch.request("groupList");
-    if (res.data) {
-        groupOptions.value = res.data.map(c => { return { label: c, key: c } })
+    const res = await configSotre.updateGroupList();
+    if (res.code != 200) {
+        msg.error(res.msg || "");
     }
-
 };
 
 const toAdd = async () => {

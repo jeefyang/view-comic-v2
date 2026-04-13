@@ -12,20 +12,21 @@
         </n-flex>
         <n-flex style="flex: 1; width: 100%" vertical>
             <!-- 空 -->
-            <n-flex style="width: 100%; height: 100%" justify="center" align="center" v-if="dataList.length == 0">
+            <n-flex style="width: 100%; height: 100%" justify="center" align="center" v-if="configSotre.libraryList.length == 0">
                 <n-empty description="书库是空的" size="huge"> </n-empty>
             </n-flex>
             <!-- 列表 -->
             <n-space vertical v-else>
-                <n-card :title="item.name" v-for="item in dataList" :key="item.name">
+                <n-card :title="item.name" v-for="item in configSotre.libraryList" :key="item.name">
                     <div class="mb-2">{{ item.pathUrl }}</div>
                     <n-flex justify="space-between">
-                        <n-button @click="toJump(item)" type="primary">跳转</n-button>
+                        <n-button size="tiny" @click="toJump(item)" type="primary">跳转</n-button>
                         <n-flex>
                             <template v-if="configSotre.userType == 'admin'">
-                                <n-button @click="toEdit(item)" type="primary">编辑</n-button>
-                                <n-button @click="toTest(item)">测试</n-button>
-                                <n-button @click="toRemove(item)" type="error">删除</n-button></template
+                                <n-button size="tiny" @click="toUpdate(item)" type="primary">更新</n-button>
+                                <n-button size="tiny" @click="toEdit(item)" type="primary">编辑</n-button>
+                                <n-button size="tiny" @click="toTest(item)">测试</n-button>
+                                <n-button size="tiny" @click="toRemove(item)" type="error">删除</n-button></template
                             >
                         </n-flex>
                     </n-flex>
@@ -44,7 +45,7 @@
                 <XDropdownInput v-model:value="formData.pathUrl" :options="showPathOptions" placeholder="输入路径,/添加提示" @change="hadndlePathInput"></XDropdownInput>
             </n-form-item>
             <n-form-item label="分组" path="groupList">
-                <n-select v-model:value="formData.groupList" multiple :options="groupOptions" />
+                <n-select v-model:value="formData.groupList" multiple :options="configSotre.groupList" />
             </n-form-item>
             <n-flex>
                 <n-button type="primary" @click="toSave">保存</n-button>
@@ -82,10 +83,6 @@ const formData = ref(<EditLibraryType>{
     newName: "",
     groupList: []
 });
-
-const groupOptions = ref(<{ label: string; value: string }[]>[]);
-
-const dataList = ref(<JsonLibrary[]>[]);
 
 let curFolderPath = "";
 let pathOption: { label: string; key: string; show?: boolean }[] = [];
@@ -147,6 +144,15 @@ const toEdit = async (item: JsonLibrary) => {
     drawerType.value = "edit";
 };
 
+const toUpdate = async (item: JsonLibrary) => {
+    const res = await libraryFetch.request("update", { ...item });
+    if (res.code != 200) {
+        msg.error(res.msg || "");
+        return;
+    }
+    msg.success(res.msg || "");
+};
+
 const toRemove = async (item: JsonLibrary) => {
     dialog.warning({
         title: "删除",
@@ -184,24 +190,19 @@ const toCancel = () => {
 };
 
 const getList = async () => {
-    const res = await libraryFetch.request("getList");
+    const res = await configSotre.updateLibraryList();
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;
     }
     msg.success(res.msg || "");
-    dataList.value = res.data!;
 };
 
 const getGroupList = async () => {
-    const res = await userFetch.request("groupList");
+    const res = await configSotre.updateGroupList();
     if (res.code != 200) {
         return msg.error(res.msg || "");
     }
-    const list = res.data!;
-    groupOptions.value = list.map((item) => {
-        return { label: item, value: item };
-    });
 };
 
 const onShow = async () => {
@@ -209,7 +210,7 @@ const onShow = async () => {
 };
 
 onMounted(() => {
-    console.log("xxx")
+    console.log("xxx");
     getList();
 });
 </script>

@@ -1,6 +1,5 @@
 <template>
-    <n-modal v-model:show="modelShow" @after-enter="onShow" preset="card" :title="editItem ? `用户修改` : '用户列表'"
-        style="width: 600px">
+    <n-modal v-model:show="modelShow" @after-enter="onShow" preset="card" :title="editItem ? `用户修改` : '用户列表'" style="width: 600px">
         <template v-if="!editItem">
             <n-flex vertical style="max-height: 40vh; overflow: auto">
                 <n-table :bordered="false" :single-line="false">
@@ -38,10 +37,9 @@
             </n-form>
             <n-form>
                 <n-form-item label="用户组:">
-                    <n-flex vertical style="width:100%;">
+                    <n-flex vertical style="width: 100%">
                         <div>
-                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="groupList"
-                                @select="toSelectGroup">
+                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="configSotre.groupList" @select="toSelectGroup">
                                 <n-button>分组</n-button>
                             </n-dropdown>
                         </div>
@@ -80,9 +78,8 @@ const configSotre = useConfigStore();
 const msg = useMessage();
 
 const editItem = ref(<WebUserType | undefined>undefined);
-const groupList = ref(<{ label: string, key: string }[]>[])
 
-const editGroup = ref("")
+const editGroup = ref("");
 
 const emits = defineEmits<{
     (e: "update:show", value: boolean): void;
@@ -93,11 +90,10 @@ const modelShow = computed({
         return props.show;
     },
     set(value: boolean) {
-        editGroup.value = ""
+        editGroup.value = "";
         emits("update:show", value);
     }
 });
-
 
 const onShow = () => {
     editItem.value = undefined;
@@ -106,33 +102,35 @@ const onShow = () => {
 
 const toEdit = async (item: WebUserType) => {
     editItem.value = item;
-    editGroup.value = item.group
+    editGroup.value = item.group;
 };
 
 const toSubmit = async (item: WebUserType) => {
     if (!editGroup.value) {
-        return msg.warning("请输入用户组")
+        return msg.warning("请输入用户组");
     }
     const res = await userFetch.request("editGroup", {
-        adminToken: configSotre.token, adminUUID: configSotre.userUUID, userUUID: item.uuid, group: editGroup.value
-    })
+        adminToken: configSotre.token,
+        adminUUID: configSotre.userUUID,
+        userUUID: item.uuid,
+        group: editGroup.value
+    });
     if (res.code != 200) {
-        return msg.error(res.msg!)
+        return msg.error(res.msg!);
     }
-    msg.success(res.msg!)
-    editItem.value = undefined
-    getList()
-
+    msg.success(res.msg!);
+    editItem.value = undefined;
+    getList();
 };
 
 const toRefresh = async () => {
-    const res = (await getList())!
+    const res = (await getList())!;
     if (res.code == 200) {
-        msg.success(res.msg!)
-        return
+        msg.success(res.msg!);
+        return;
     }
-    msg.error(res.msg!)
-}
+    msg.error(res.msg!);
+};
 
 const getList = async () => {
     const res = await userFetch.request("list");
@@ -140,16 +138,15 @@ const getList = async () => {
         msg.error(res.msg || "");
         return;
     }
-    const list = res.data || []
+    const list = res.data || [];
     datalist.value = list;
-    const arr = [...new Set(list.filter(c => c.group).map(c => c.group))]
-    groupList.value = arr.map(c => { return { label: c, key: c } })
-    return res
+    configSotre.updateGroupList();
+    return res;
 };
 
 const toSelectGroup = (item: string) => {
-    editGroup.value = item
-}
+    editGroup.value = item;
+};
 
 const toDel = async (item: WebUserType) => {
     dialog.warning({
@@ -164,7 +161,7 @@ const toDel = async (item: WebUserType) => {
                 return;
             }
             msg.success("删除成功");
-            editItem.value = undefined
+            editItem.value = undefined;
             getList();
         }
     });

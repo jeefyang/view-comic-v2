@@ -62,6 +62,8 @@ const toLogin = async () => {
         return;
     }
     configSotre.toLogin(res.data!);
+    configSotre.updateGroupList();
+    configSotre.updateLibraryList();
     modelShow.value = false;
 };
 </script>

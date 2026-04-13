@@ -3,6 +3,7 @@ import bcrypt from 'bcrypt';
 import { addTokenCache, tokenCache, User_FILE } from './cache';
 import { nanoid } from "nanoid";
 import { type Request, type Response } from "express";
+import { ResSendType } from '@common/apis/tools/apiUrlsTrans';
 
 
 const saltRounds = 12;
@@ -146,9 +147,9 @@ export function verifyUser(token: string) {
     return tokenCache.findIndex(c => c.token == token) != -1;
 }
 
-export function editUserGroup(editData:EditUserType):[JsonConfig|undefined,any]{
-try {
-         const list = readUsers();
+export function editUserGroup(editData: EditUserType): [JsonConfig | undefined, any] {
+    try {
+        const list = readUsers();
         if (list.length == 0) {
             throw new Error('用户数据库未初始化');
         }
@@ -179,7 +180,7 @@ try {
             return [undefined, '用户不存在'];
         }
         const item = { ...list[index] };
-        item.group=editData.group
+        item.group = editData.group;
         item.modifyTime = new Date().getTime();
         list[index] = item;
         updateUsers(list);
@@ -310,7 +311,7 @@ export function getUserFromToken(token: string): [JsonUser | undefined, any] {
     return [user, undefined];
 }
 
-export async function vertifyToken(req: Request, res: Response): Promise<ReturnType<any> | undefined> {
+export async function vertifyToken(req: Request, res: Response): Promise<ResSendType<any> | undefined> {
     const token = <string>(req.headers.token);
     if (!token) {
         return { code: 401, err: 'Unauthorized', msg: "token不存在,请先登录" };

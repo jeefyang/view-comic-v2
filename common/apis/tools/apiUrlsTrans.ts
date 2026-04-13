@@ -15,7 +15,7 @@ export function apiUrlsTrans<F extends any, T extends any, D extends { [x in str
     return newO;
 }
 
-export type ResultType<T> = {
+export type ResSendType<T> = {
     code?: number;
     msg?: string;
     data?: T;
