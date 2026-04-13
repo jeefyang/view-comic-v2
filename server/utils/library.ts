@@ -40,6 +40,7 @@ export function addLib(target: EditLibraryType): [JsonLibrary | undefined, any] 
         name: target.name,
         pathUrl: target.pathUrl,
         uuid: nanoid(8),
+        groupList: target.groupList || [],
         createTime: new Date().getTime(),
         modifyTime: new Date().getTime()
     };
@@ -49,7 +50,10 @@ export function addLib(target: EditLibraryType): [JsonLibrary | undefined, any] 
 }
 
 export function removeLib(target: EditLibraryType): [JsonLibrary | undefined, any] {
-    const index = libCache.findIndex(item => item.name == target.name);
+    if (!target.uuid) {
+        return [undefined, "请输入uuid"];
+    }
+    const index = libCache.findIndex(item => item.uuid == target.uuid);
     if (index == -1) {
         return [undefined, '未找到'];
     }
@@ -60,8 +64,11 @@ export function removeLib(target: EditLibraryType): [JsonLibrary | undefined, an
 };
 
 export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any] {
+    if (!target.uuid) {
+        return [undefined, "请输入uuid"];
+    }
     const list = getList();
-    const index = list.findIndex(item => item.name == target.name);
+    const index = list.findIndex(item => item.uuid == target.uuid);
     if (index == -1) {
         return [undefined, '未找到'];
     }
@@ -71,6 +78,9 @@ export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any]
     }
     if (target.pathUrl) {
         item.pathUrl = target.pathUrl;
+    }
+    if (target.groupList) {
+        item.groupList = target.groupList;
     }
     item.modifyTime = new Date().getTime();
     list[index] = item;

@@ -1,4 +1,4 @@
-<!-- ComicsListView.vue -->
-<script lang="ts">
-export default { name: 'ComicListView' }
-</script>
+<template>
+    <div>123</div>
+</template>
+<script setup lang="ts"></script>

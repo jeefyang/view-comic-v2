@@ -121,7 +121,7 @@ export function useLibraryApi(router: Router) {
                 msg: "权限不足",
             };
         }
-        const { name, pathUrl } = from;
+        const { name, pathUrl, groupList } = from;
         if (!pathUrl || !name) {
             return {
                 code: 402,
@@ -134,7 +134,7 @@ export function useLibraryApi(router: Router) {
                 msg: "文件夹不存在"
             };
         }
-        const newData = { name, pathUrl };
+        const newData = { name, pathUrl, groupList: groupList || [] };
         const resData = addLib(newData);
         if (resData[1]) {
             return {
@@ -174,14 +174,14 @@ export function useLibraryApi(router: Router) {
                 msg: "权限不足",
             };
         }
-        const { name } = from;
-        if (!name) {
+        const { uuid } = from;
+        if (!uuid) {
             return {
                 code: 402,
                 msg: "请完善参数"
             };
         }
-        const resData = removeLib({ name });
+        const resData = removeLib({ uuid });
         if (resData[1]) {
             return {
                 code: 500,
@@ -214,8 +214,8 @@ export function useLibraryApi(router: Router) {
                 msg: "权限不足",
             };
         }
-        const { name, pathUrl, newName } = from;
-        if (!name || !pathUrl) {
+        const { uuid, pathUrl, newName, groupList } = from;
+        if (!uuid || !pathUrl) {
             return {
                 code: 402,
                 msg: "请完善参数"
@@ -227,7 +227,7 @@ export function useLibraryApi(router: Router) {
                 msg: "文件夹不存在"
             };
         }
-        const newData: EditLibraryType = { name, pathUrl, newName };
+        const newData: EditLibraryType = { uuid, pathUrl, newName, groupList };
         const resData = editLib(newData);
         if (resData[1]) {
             return {

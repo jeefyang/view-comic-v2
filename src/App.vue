@@ -37,10 +37,10 @@ const isDark = useDark();
 
 // 所有需要缓存的页面 name（必须与组件 name 一致！）
 const cachedViews = [
-    "LibraryView",
-    "ComicsListView",
-    "SettingsView",
-    "ReaderView" // ← 阅读页也缓存！
+    "libraryView",
+    "comicsListView",
+    "settingsView",
+    "readerView" // ← 阅读页也缓存！
 ];
 
 onMounted(() => {

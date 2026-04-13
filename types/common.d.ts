@@ -42,16 +42,17 @@ type configType = {
 };
 
 type EditLibraryType = {
-    name: string;
+    name?: string;
     newName?: string;
     pathUrl?: string;
     /** 权限分组 */
     groupList?: string[];
+    uuid?: string;
 };
 
 
 type EditUserType = {
-    editType: 'add' | 'edit' | 'delete'|'editGroup',
+    editType: 'add' | 'edit' | 'delete' | 'editGroup',
     adminUUID?: string;
     adminToken?: string;
     userUUID?: string;

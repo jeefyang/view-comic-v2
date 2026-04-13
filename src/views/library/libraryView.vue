@@ -34,7 +34,7 @@
         </n-flex>
     </n-flex>
     <!-- 下拉 -->
-    <n-drawer v-model:show="openDrawer" placement="top" :height="500">
+    <n-drawer v-model:show="openDrawer" placement="top" :height="500" @after-enter="onShow">
         <n-drawer-content :title="drawerType == 'add' ? '新建' : '编辑'">
             <n-form ref="formRef" :model="formData"> </n-form>
             <n-form-item label="仓库名" path="name">
@@ -42,6 +42,9 @@
             </n-form-item>
             <n-form-item label="路径" path="pathUrl">
                 <XDropdownInput v-model:value="formData.pathUrl" :options="showPathOptions" placeholder="输入路径,/添加提示" @change="hadndlePathInput"></XDropdownInput>
+            </n-form-item>
+            <n-form-item label="分组" path="groupList">
+                <n-select v-model:value="formData.groupList" multiple :options="groupOptions" />
             </n-form-item>
             <n-flex>
                 <n-button type="primary" @click="toSave">保存</n-button>
@@ -53,15 +56,14 @@
 </template>
 
 <script setup lang="ts">
-import { darkTheme, useThemeVars, useMessage, useDialog } from "naive-ui";
+import { useThemeVars, useMessage, useDialog } from "naive-ui";
 import { onMounted, ref } from "vue";
 import { Add12Filled } from "@vicons/fluent";
-import { ConstructionFilled, RefreshOutlined } from "@vicons/material";
-import { n } from "vue-router/dist/index-Cu9B0wDz.mjs";
+import { RefreshOutlined } from "@vicons/material";
 import { useConfigStore } from "@/stores/config";
 import { useRoute, useRouter } from "vue-router";
 import XDropdownInput from "@/components/XDropdownInput.vue";
-import { libraryFetch } from "@/utils/jFetch";
+import { libraryFetch, userFetch } from "@/utils/jFetch";
 
 const themeVars = useThemeVars();
 const openDrawer = ref(false);
@@ -71,14 +73,17 @@ const configSotre = useConfigStore();
 const route = useRoute();
 const router = useRouter();
 
-const message = useMessage();
+const msg = useMessage();
 const dialog = useDialog();
 
 const formData = ref(<EditLibraryType>{
     name: "",
     pathUrl: "",
-    newName: ""
+    newName: "",
+    groupList: []
 });
+
+const groupOptions = ref(<{ label: string; value: string }[]>[]);
 
 const dataList = ref(<JsonLibrary[]>[]);
 
@@ -118,7 +123,8 @@ const hadndlePathInput = async (p: string) => {
 const addLibraryFn = () => {
     formData.value = {
         name: "",
-        pathUrl: ""
+        pathUrl: "",
+        groupList: []
     };
     openDrawer.value = true;
     drawerType.value = "add";
@@ -127,10 +133,10 @@ const addLibraryFn = () => {
 const toSave = async () => {
     const res = drawerType.value == "add" ? await libraryFetch.request("add", { ...formData.value }) : await libraryFetch.request("edit", { ...formData.value });
     if (res.code != 200) {
-        message.error(res.msg || "");
+        msg.error(res.msg || "");
         return;
     }
-    message.success(res.msg || "");
+    msg.success(res.msg || "");
     openDrawer.value = false;
     getList();
 };
@@ -150,9 +156,9 @@ const toRemove = async (item: JsonLibrary) => {
         onPositiveClick: async () => {
             const res = await libraryFetch.request("remove", { ...item });
             if (res.code != 200) {
-                message.error(res.msg || "");
+                msg.error(res.msg || "");
             }
-            message.success(res.msg || "");
+            msg.success(res.msg || "");
             getList();
         }
     });
@@ -161,9 +167,9 @@ const toRemove = async (item: JsonLibrary) => {
 const toTest = async (item: EditLibraryType) => {
     const res = await libraryFetch.request("folderTest", { ...item });
     if (res.code == 200) {
-        message.success(res.msg || "");
+        msg.success(res.msg || "");
     } else {
-        message.error(res.msg || "");
+        msg.error(res.msg || "");
     }
 };
 
@@ -180,14 +186,30 @@ const toCancel = () => {
 const getList = async () => {
     const res = await libraryFetch.request("getList");
     if (res.code != 200) {
-        message.error(res.msg || "");
+        msg.error(res.msg || "");
         return;
     }
-    message.success(res.msg || "");
+    msg.success(res.msg || "");
     dataList.value = res.data!;
 };
 
+const getGroupList = async () => {
+    const res = await userFetch.request("groupList");
+    if (res.code != 200) {
+        return msg.error(res.msg || "");
+    }
+    const list = res.data!;
+    groupOptions.value = list.map((item) => {
+        return { label: item, value: item };
+    });
+};
+
+const onShow = async () => {
+    getGroupList();
+};
+
 onMounted(() => {
+    console.log("xxx")
     getList();
 });
 </script>
