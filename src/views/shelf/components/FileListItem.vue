@@ -1,10 +1,11 @@
 <template>
     <n-flex vertical style="flex: 1; overflow: auto; scrollbar-width: none; gap: 1rem">
-        <div class="up" ref="upTarget" style="height: 10px"></div>
-        <div>
+        <div ></div>
+        <div class="up" ref="upTarget" style="height: 1px"></div>
+        <div class="content">
             <FileItem v-for="item in viewStore.shelfFileList" :key="item.name" :item="item"></FileItem>
         </div>
-        <div class="down" ref="downTarget"></div>
+        <div class="down" ref="bottomTarget" style="height: 1px"></div>
     </n-flex>
 </template>
 <script setup lang="ts">
@@ -17,13 +18,15 @@ import FileItem from "./FileItem.vue";
 const viewStore = useViewStore();
 
 const upTarget = ref<HTMLElement>();
-const BottomTarget = ref<HTMLElement>();
+const bottomTarget = ref<HTMLElement>();
 
 const start = ref(0);
 const end = ref(0);
 const len = 5;
 const upHeight = ref(0);
 const downHeight = ref(0);
+
+
 
 watch(
     () => viewStore.shelfFileList,
@@ -41,10 +44,11 @@ const downUpdate = () => {};
 
 onMounted(() => {
     const upStop = useIntersectionObserver(upTarget, ([entry], observerElement) => {
-        if (start.value > 0) {
-            // start.value+=
-        }
+      console.log("upTarget",entry?.isIntersecting)
     }).stop;
-    const bottomStop = useIntersectionObserver(BottomTarget, ([entry], observerElement) => {}).stop;
+    const bottomStop = useIntersectionObserver(bottomTarget, ([entry], observerElement) => {
+
+        console.log("BottomTarget",entry?.isIntersecting)
+    }).stop;
 });
 </script>

@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@tanstack/vue-virtual':
-        specifier: ^3.13.23
-        version: 3.13.23(vue@3.5.28(typescript@5.9.3))
       '@vueuse/core':
         specifier: ^14.2.1
         version: 14.2.1(vue@3.5.28(typescript@5.9.3))
@@ -707,14 +704,6 @@ packages:
     resolution: {integrity: sha512-mxRFDdHIWRxg3UfIIAwCm6NzvxG0jDX/wBN6KsQFTvKFqqg9vTrWUE68qEjHt19A5wwx5X5aUi2zuZT7YR0jrA==}
     cpu: [x64]
     os: [win32]
-
-  '@tanstack/virtual-core@3.13.23':
-    resolution: {integrity: sha512-zSz2Z2HNyLjCplANTDyl3BcdQJc2k1+yyFoKhNRmCr7V7dY8o8q5m8uFTI1/Pg1kL+Hgrz6u3Xo6eFUB7l66cg==}
-
-  '@tanstack/vue-virtual@3.13.23':
-    resolution: {integrity: sha512-b5jPluAR6U3eOq6GWAYSpj3ugnAIZgGR0e6aGAgyRse0Yu6MVQQ0ZWm9SArSXWtageogn6bkVD8D//c4IjW3xQ==}
-    peerDependencies:
-      vue: ^2.7.0 || ^3.0.0
 
   '@tsconfig/node24@24.0.4':
     resolution: {integrity: sha512-2A933l5P5oCbv6qSxHs7ckKwobs8BDAe9SJ/Xr2Hy+nDlwmLE1GhFh/g/vXGRZWgxBg9nX/5piDtHR9Dkw/XuA==}
@@ -2673,13 +2662,6 @@ snapshots:
 
   '@rollup/rollup-win32-x64-msvc@4.57.1':
     optional: true
-
-  '@tanstack/virtual-core@3.13.23': {}
-
-  '@tanstack/vue-virtual@3.13.23(vue@3.5.28(typescript@5.9.3))':
-    dependencies:
-      '@tanstack/virtual-core': 3.13.23
-      vue: 3.5.28(typescript@5.9.3)
 
   '@tsconfig/node24@24.0.4': {}
 
