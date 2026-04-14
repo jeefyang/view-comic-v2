@@ -16,6 +16,7 @@ type JFetchReturnType<D = any> = {
 
 type SortNameType = "name" | "extension" | "size" | "createTime" | "updateTime" | 'number';
 
+type IncludeFileType = "filefolder" | "file" | "folder";
 
 type JsonLibrary = {
     name: string; pathUrl: string; uuid: string; createTime?: number;
@@ -26,10 +27,22 @@ type JsonLibrary = {
 type ViewFileType = {
     name: string;
     size: number;
-    createTime:number;
-    updateTime:number;
-    ext:string;
-    isFolder:boolean;
+    createTime: string;
+    updateTime: string;
+    sizeStr: string;
+    createTimeMS: number;
+    updateTimeMS: number;
+    ext: string;
+    isDir: boolean;
+    extType?: ViewFileExtType;
+};
+
+type ViewFileExtType = "zip" | "image" | "video"|"other";
+
+type viewFolderType = {
+    libUUID: string;
+    basePath: string;
+    list: ViewFileType[];
 };
 
 

@@ -10,6 +10,38 @@ import { getViewFile } from '../utils/view';
 export function useViewApi(router: Router) {
     const viewRouter = new TransExpressRouter(ViewApiUrl, router);
 
+    viewRouter.setRouter("checkFolder", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
+        }
+        if (!from.editUUID) {
+            return {
+                code: 402,
+                msg: "缺少editUUID"
+            };
+        }
+        const data = getLibPathByUUID(undefined, from.editUUID);
+        if (data[1]) {
+            return {
+                code: 500,
+                msg: data[1]
+            };
+        }
+        const url = path.join(data[0]!, from.path || "");
+        if (!fs.existsSync(url)) {
+            return {
+                code: 404,
+                data: false,
+                msg: "路径不存在"
+            };
+        }
+        return {
+            code: 200,
+            data: true
+        };
+    });
+
     viewRouter.setRouter("folder", async (from, req, res) => {
         const check = await vertifyToken(req, res);
         if (check) {
@@ -21,12 +53,6 @@ export function useViewApi(router: Router) {
                 msg: "缺少editUUID"
             };
         }
-        if (!from.path) {
-            return {
-                code: 402,
-                msg: "缺少path"
-            };
-        }
         const data = getLibPathByUUID(undefined, from.editUUID);
         if (data[1]) {
             return {
@@ -36,7 +62,7 @@ export function useViewApi(router: Router) {
         }
 
         try {
-            const url = path.join(data[0]!, from.path);
+            const url = path.join(data[0]!, from.path || "");
             if (!fs.existsSync(url)) {
                 return {
                     code: 404,
@@ -44,18 +70,22 @@ export function useViewApi(router: Router) {
                 };
             }
             const list = fs.readdirSync(url);
-            const fileList: ViewFileType[] = []
-            list.every(c => {
-                const file = getViewFile(path.join(url, c))
+            const fileList: ViewFileType[] = [];
+            list.forEach(c => {
+                const file = getViewFile(path.join(url, c));
                 if (!file) {
-                    return
+                    return;
                 }
-                fileList.push(file)
-            })
+                fileList.push(file);
+            });
             return {
-                data: fileList,
+                data: {
+                    libUUID: from.editUUID,
+                    basePath: from.path,
+                    list: fileList
+                },
                 msg: "操作成功"
-            }
+            };
         }
         catch (e) {
             return {

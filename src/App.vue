@@ -29,7 +29,7 @@ import { darkTheme, darkTheme as darkThemePreset } from "naive-ui";
 import AppBottomNav from "@/components/AppBottomNav.vue";
 import { useConfigStore } from "./stores/config";
 import XLogin from "./components/XLogin.vue";
-import { configFetch, libraryFetch, userFetch } from "./utils/jFetch";
+import { configFetch, libraryFetch, userFetch, viewFetch } from "./utils/jFetch";
 import type { ResSendType } from "@common/apis/tools/apiUrlsTrans";
 
 const config = useConfigStore();
@@ -40,13 +40,13 @@ const isDark = useDark();
 // 所有需要缓存的页面 name（必须与组件 name 一致！）
 const cachedViews = [
     "libraryView",
-    "comicsListView",
+    "shelfView",
     "settingsView",
     "readerView" // ← 阅读页也缓存！
 ];
 
 onMounted(() => {
-[userFetch, configFetch, libraryFetch].forEach(item => {
+[userFetch, configFetch, libraryFetch,viewFetch].forEach(item => {
     item.getHeaderFn = async () => {
         const headers = new Headers({
             "Content-Type": "application/json",

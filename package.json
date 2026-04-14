@@ -11,6 +11,7 @@
     "type-check": "vue-tsc --build"
   },
   "dependencies": {
+    "@tanstack/vue-virtual": "^3.13.23",
     "@vueuse/core": "^14.2.1",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",

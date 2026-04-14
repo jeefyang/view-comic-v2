@@ -65,12 +65,14 @@ import { useConfigStore } from "@/stores/config";
 import { useRoute, useRouter } from "vue-router";
 import XDropdownInput from "@/components/XDropdownInput.vue";
 import { libraryFetch, userFetch } from "@/utils/jFetch";
+import { useViewStore } from "@/stores/view";
 
 const themeVars = useThemeVars();
 const openDrawer = ref(false);
 const drawerType = ref(<"add" | "edit">"add");
 const formRef = ref(null);
 const configSotre = useConfigStore();
+const viewStore = useViewStore();
 const route = useRoute();
 const router = useRouter();
 
@@ -181,7 +183,7 @@ const toTest = async (item: EditLibraryType) => {
 
 const toJump = (item: JsonLibrary) => {
     // window.open(item.pathUrl);
-    configSotre.setLibrary(item);
+    viewStore.setLibrary(item);
     router.push({ path: "/list" });
 };
 
@@ -210,7 +212,6 @@ const onShow = async () => {
 };
 
 onMounted(() => {
-    console.log("xxx");
     getList();
 });
 </script>

@@ -7,7 +7,7 @@ export const useConfigStore = defineStore('config', () => {
     const username = ref("");
     const userUUID = ref("");
     const userType = ref(<UserTypeType>"user");
-    const curLibrary = ref(<JsonLibrary>{});
+
     const saveKey = "config";
     const showLogin = ref(false);
     const libraryList = ref([] as JsonLibrary[]);
@@ -18,7 +18,7 @@ export const useConfigStore = defineStore('config', () => {
     });
 
     const returnData = {
-        userType, token, username, curLibrary, userUUID
+        userType, token, username, userUUID
     };
 
     const save = () => {
@@ -36,7 +36,11 @@ export const useConfigStore = defineStore('config', () => {
             const obj = JSON.parse(config);
             for (let key in obj) {
                 //@ts-expect-error
-                returnData[key].value = obj[key];
+                if (returnData[key]) {
+                    //@ts-expect-error
+                    returnData[key].value = obj[key];
+                }
+
             }
         }
     };
@@ -45,10 +49,6 @@ export const useConfigStore = defineStore('config', () => {
         localStorage.removeItem(saveKey);
     };
 
-    const setLibrary = (item: JsonLibrary) => {
-        curLibrary.value = item;
-        save();
-    };
 
 
 
@@ -85,10 +85,8 @@ export const useConfigStore = defineStore('config', () => {
 
     const init = async () => {
         await updateLibraryList();
-
-
     };
 
     load();
-    return { ...returnData, showLogin, save, load, clear, setLibrary, toLogin, toLogout, isLogin, libraryList, groupList, updateLibraryList, updateGroupList, init };
+    return { ...returnData, showLogin, save, load, clear, toLogin, toLogout, isLogin, libraryList, groupList, updateLibraryList, updateGroupList, init };
 });
