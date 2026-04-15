@@ -24,7 +24,6 @@ export const useConfigStore = defineStore('config', () => {
     const save = () => {
         const obj: any = {};
         for (let key in returnData) {
-            //@ts-expect-error
             obj[key] = returnData[key].value;
         }
         localStorage.setItem(saveKey, JSON.stringify(obj));
@@ -35,9 +34,7 @@ export const useConfigStore = defineStore('config', () => {
         if (config) {
             const obj = JSON.parse(config);
             for (let key in obj) {
-                //@ts-expect-error
                 if (returnData[key]) {
-                    //@ts-expect-error
                     returnData[key].value = obj[key];
                 }
 
@@ -48,8 +45,6 @@ export const useConfigStore = defineStore('config', () => {
     const clear = () => {
         localStorage.removeItem(saveKey);
     };
-
-
 
 
     const toLogin = (data: WebUserType) => {

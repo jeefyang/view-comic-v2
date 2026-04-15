@@ -14,25 +14,25 @@
                 </n-button>
                 <n-flex style="flex: 1; flex-wrap: nowrap; overflow: auto; scrollbar-width: none">
                     <n-breadcrumb>
-                        <n-breadcrumb-item v-for="(item, index) in splitPath" :key="index" @click="toSelectPath(index)">{{ item }}</n-breadcrumb-item>
+                        <n-breadcrumb-item v-for="(item, index) in viewStore.shelfPath" :key="index" @click="toSelectPath(index)">{{ item }}</n-breadcrumb-item>
                     </n-breadcrumb>
                 </n-flex>
-                <n-button @click="toBackPath">
+                <n-button @click="toBack">
                     <n-icon> <ArrowBack></ArrowBack> </n-icon>
                 </n-button>
             </n-flex>
 
             <n-input-group>
-                <n-button type="primary" :loading="isUpdateLoading"> 搜索 </n-button>
+                <n-button type="primary" :loading="viewStore.shelfLoading"> 搜索 </n-button>
                 <n-input v-model:value="viewStore.shelfSearchKey" :style="{ width: '100%' }" placeholder="请输入关键字" clearable />
             </n-input-group>
             <n-button-group>
                 <n-button type="info" @click="toChangeSortType">{{ sortNameList[viewStore.shelfSortType] }}</n-button>
                 <n-button type="success" @click="toChangeSortValue">{{ viewStore.shelfSortValue == 1 ? "正序" : "反序" }}</n-button>
                 <n-button type="warning" @click="toChangeFileType">{{ includeList[viewStore.shelfIncludeType] }}</n-button>
-                <n-button @click="toUpdate" :loading="isUpdateLoading">刷新</n-button>
+                <n-button @click="toUpdate" :loading="viewStore.shelfLoading">刷新</n-button>
             </n-button-group>
-           <file-list-item></file-list-item>
+            <FileListItem2></FileListItem2>
         </n-flex>
     </template>
 </template>
@@ -42,7 +42,8 @@ import { viewFetch } from "@/utils/jFetch";
 import { useMessage, useThemeVars } from "naive-ui";
 import { computed, onActivated, ref } from "vue";
 import { HomeOutline, ArrowBack } from "@vicons/ionicons5";
-import FileListItem from "./components/FileListItem.vue";
+// import FileListItem from "./components/FileListItem.vue";
+import FileListItem2 from "./components/FileListItem2.vue";
 
 defineOptions({
     name: "shelfView"
@@ -50,8 +51,6 @@ defineOptions({
 
 const themeVars = useThemeVars();
 const viewStore = useViewStore();
-
-const isUpdateLoading = ref(false);
 
 const msg = useMessage();
 
@@ -70,45 +69,41 @@ const includeList = ref(<{ [x in IncludeFileType]: string }>{
     folder: "文件夹"
 });
 
-const splitPath = computed(() => {
-    return viewStore.shelfPath.split("/");
-});
-
 const toHome = () => {
-    if (isUpdateLoading.value) {
+    if (viewStore.shelfLoading) {
         msg.warning("正在刷新中,请勿操作");
         return;
     }
-    if (viewStore.shelfPath == "") {
+    if (viewStore.shelfPath.length == 0) {
         return;
     }
-    viewStore.shelfPath = "";
+    viewStore.shelfPath = [];
+    viewStore.updateShelfFolder();
 };
 
-const toBackPath = () => {
-    if (isUpdateLoading.value) {
+const toBack = () => {
+    if (viewStore.shelfLoading) {
         msg.warning("正在刷新中,请勿操作");
         return;
     }
-    if (viewStore.shelfPath == "") {
+    if (viewStore.shelfPath.length == 0) {
         return;
     }
-    viewStore.shelfPath = viewStore.shelfPath.split("/").slice(0, -1).join("/");
+    viewStore.shelfPath = viewStore.shelfPath.slice(0, -1);
+    viewStore.updateShelfFolder();
 };
 
 const toSelectPath = (index: number) => {
-    if (isUpdateLoading.value) {
+    if (viewStore.shelfLoading) {
         msg.warning("正在刷新中,请勿操作");
         return;
     }
-    viewStore.shelfPath = viewStore.shelfPath
-        .split("/")
-        .slice(0, index + 1)
-        .join("/");
+    viewStore.shelfPath = viewStore.shelfPath.slice(0, index + 1);
+    viewStore.updateShelfFolder();
 };
 
 const toChangeSortType = () => {
-    if (isUpdateLoading.value) {
+    if (viewStore.shelfLoading) {
         msg.warning("正在刷新中,请勿操作");
         return;
     }
@@ -118,37 +113,31 @@ const toChangeSortType = () => {
 };
 
 const toChangeSortValue = () => {
-    if (isUpdateLoading.value) {
+    if (viewStore.shelfLoading) {
         msg.warning("正在刷新中,请勿操作");
         return;
     }
     viewStore.shelfSortValue = viewStore.shelfSortValue == 1 ? -1 : 1;
+    viewStore.sortShelfFileList();
 };
 
 const toChangeFileType = () => {
-    if (isUpdateLoading.value) {
+    if (viewStore.shelfLoading) {
         msg.warning("正在刷新中,请勿操作");
         return;
     }
     const list: IncludeFileType[] = ["filefolder", "file", "folder"];
     const index = list.indexOf(viewStore.shelfIncludeType);
     viewStore.shelfIncludeType = list[(index + 1) % list.length]!;
+    viewStore.sortShelfFileList();
 };
 
 const toUpdate = async () => {
-    isUpdateLoading.value = true;
-    await new Promise(async (resolve) => {
-        setTimeout(() => {
-            resolve(true);
-        }, 3000);
-    });
-    isUpdateLoading.value = false;
+    await viewStore.updateShelfFolder();
 };
 
 const updateList = async () => {
     await viewStore.updateShelfFolder();
-    viewStore.sortShelfFileList();
-    console.log(viewStore.shelfFileList);
 };
 
 const checkLibrary = async () => {
@@ -156,7 +145,7 @@ const checkLibrary = async () => {
         isEmpty.value = true;
         return;
     }
-    const res = await viewFetch.request("checkFolder", { editUUID: viewStore.curLibrary.editUUID, path: viewStore.shelfPath });
+    const res = await viewFetch.request("checkFolder", { editUUID: viewStore.curLibrary.editUUID, path: viewStore.shelfPath.join("/") });
     if (res.code != 200) {
         isEmpty.value = true;
         return;

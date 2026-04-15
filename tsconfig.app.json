@@ -15,6 +15,7 @@
         "types": [
             "naive-ui/volar"
         ],
+        "strict": false,
         "paths": {
              "@common/*": [
                 "./common/*"
