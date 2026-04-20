@@ -18,6 +18,7 @@
 </template>
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
+import { useViewStore } from "@/stores/view";
 import { userFetch } from "@/utils/jFetch";
 import { useMessage } from "naive-ui";
 import { computed, reactive, ref } from "vue";
@@ -34,6 +35,7 @@ const formData = reactive({
 });
 
 const configSotre = useConfigStore();
+const viewStore = useViewStore();
 const msg = useMessage();
 
 const emits = defineEmits<{
@@ -63,7 +65,7 @@ const toLogin = async () => {
     }
     configSotre.toLogin(res.data!);
     configSotre.updateGroupList();
-    configSotre.updateLibraryList();
+    viewStore.updateLibraryList();
     modelShow.value = false;
 };
 </script>

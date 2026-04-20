@@ -1,8 +1,9 @@
+import { imageTypeList, zipTypeList } from "@common/utils/ext";
 import fs from "fs";
 import path from "path";
-
-const zipTypeList: string[] = ['zip', "rar"];
-const imageTypeList: string[] = ['png', "jpg", "jpeg", "gif", "webp", "apng"];
+import StreamZip from "node-stream-zip";
+import { getFileExt, getSizeStr } from ".";
+import { getMyStreamZip } from "./myStreamZip";
 
 export function getViewFile(p: string) {
     const stat = fs.statSync(p);
@@ -11,36 +12,9 @@ export function getViewFile(p: string) {
     if (!isFile && !isDir) {
         return undefined;
     }
-    const size = stat.size;
-    const sizeList: string[] = ['B', 'KB', 'MB', 'GB', 'TB'];
-    let sizeSplit = size;
-    let sizeStr = "";
-    for (let i = 0; i < sizeList.length; i++) {
-        if (sizeSplit < 1024) {
-            break;
-        }
-        sizeSplit = sizeSplit / 1024;
-        sizeStr = sizeSplit.toFixed(2) + sizeList[i];
-    }
-    const ext = isFile ? path.extname(p).slice(1).toLowerCase() : "";
-    let extType: ViewFileExtType | undefined = undefined;
-    if (ext && !isDir) {
-        const list: { [x in ViewFileExtType]?: string[] } = {
-            "zip": zipTypeList,
-            "image": imageTypeList
-        };
-        for (const key in list) {
-            //@ts-expect-error
-            if (list[key].includes(ext)) {
-                //@ts-expect-error
-                extType = key;
-                break;
-            }
-        }
-    }
-    if (!isDir && !extType) {
-        return undefined;
-    }
+    const sizeStr = getSizeStr(stat.size);
+    const extData = isDir ? undefined : getFileExt(p);
+
     const file: ViewFileType = {
         name: path.basename(p),
         size: stat.size,
@@ -49,9 +23,60 @@ export function getViewFile(p: string) {
         updateTimeMS: stat.mtimeMs,
         createTime: stat.birthtime.toLocaleString(),
         updateTime: stat.mtime.toLocaleString(),
-        extType: isDir ? undefined : 'zip',
-        ext: ext,
+        extType: extData?.extType || undefined,
+        ext: extData?.ext || "",
         isDir
     };
     return file;
+}
+
+export function getComicViewListByFile(p: string): [ComicFileListType | undefined, any] {
+    const stat = fs.statSync(p);
+    const isDir = stat.isDirectory();
+    const dir = isDir ? p : path.dirname(p);
+    const curname = isDir ? undefined : path.basename(p);
+    const incldeExts: ViewFileExtType[] = ['image', 'video'];
+    let start = 0;
+    const filenameList = fs.readdirSync(dir);
+    const list: ComicFileType[] = [];
+    let len = 0;
+    for (let i = 0; i < filenameList.length; i++) {
+        const pf = path.join(dir, filenameList[i]);
+        const f = getViewFile(pf);
+        if (f?.isDir) {
+            continue;
+        }
+        if (!f?.extType || !incldeExts.includes(f.extType)) {
+            continue;
+        }
+        if (curname && curname == filenameList[i]) {
+            start = len;
+        }
+        len = list.push({ ...f, index: len });
+    }
+    return [{
+        basePath: dir,
+        start,
+        isZip: false,
+        list
+    }, undefined];
+
+
+}
+
+export async function getComicViewList(url: string, f: ViewFileType, nameEncoding?: string): Promise<[ComicFileListType | undefined, any]> {
+    const p = path.join(url, f.name);
+    if (f.extType == 'zip') {
+        const zipData = await getMyStreamZip(p, nameEncoding);
+        if (zipData[1]) {
+            return [undefined, zipData[1]];
+        }
+        return [{
+            list: zipData[0]!.getList(),
+            basePath: p,
+            isZip: true,
+            start: 0
+        }, undefined];
+    }
+    return [getComicViewListByFile(p)[0], undefined];
 }

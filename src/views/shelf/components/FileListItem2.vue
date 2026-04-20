@@ -46,7 +46,11 @@ const toClick = async (item: ViewFileType) => {
         viewStore.updateShelfFolder();
         return;
     }
-    msg.info(item.name);
+    if (item.extType == "zip") {
+        viewStore.updateComicViewList(item);
+        return;
+    }
+    msg.warning("暂不支持读取此文件");
 };
 
 watch(

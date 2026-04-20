@@ -10,7 +10,7 @@ export const useConfigStore = defineStore('config', () => {
 
     const saveKey = "config";
     const showLogin = ref(false);
-    const libraryList = ref([] as JsonLibrary[]);
+
     const groupList = ref(<{ label: string, value: string, key: string; }[]>[]);
 
     const isLogin = computed(() => {
@@ -62,13 +62,6 @@ export const useConfigStore = defineStore('config', () => {
         save();
     };
 
-    const updateLibraryList = async () => {
-        const res = await libraryFetch.request("getList");
-        if (res.code == 200) {
-            libraryList.value = res.data!;
-        }
-        return res;
-    };
 
     const updateGroupList = async () => {
         const res = await userFetch.request('groupList');
@@ -78,10 +71,8 @@ export const useConfigStore = defineStore('config', () => {
         return res;
     };
 
-    const init = async () => {
-        await updateLibraryList();
-    };
+
 
     load();
-    return { ...returnData, showLogin, save, load, clear, toLogin, toLogout, isLogin, libraryList, groupList, updateLibraryList, updateGroupList, init };
+    return { ...returnData, showLogin, save, load, clear, toLogin, toLogout, isLogin, groupList, updateGroupList,  };
 });

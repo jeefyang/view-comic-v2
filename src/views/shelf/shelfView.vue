@@ -51,6 +51,7 @@ defineOptions({
 
 const themeVars = useThemeVars();
 const viewStore = useViewStore();
+const libarayEditUUID = ref("");
 
 const msg = useMessage();
 
@@ -145,6 +146,11 @@ const checkLibrary = async () => {
         isEmpty.value = true;
         return;
     }
+    if (viewStore.curLibrary.editUUID != libarayEditUUID.value) {
+        viewStore.shelfPath = [];
+        isEmpty.value = true;
+        viewStore.save();
+    }
     const res = await viewFetch.request("checkFolder", { editUUID: viewStore.curLibrary.editUUID, path: viewStore.shelfPath.join("/") });
     if (res.code != 200) {
         isEmpty.value = true;
@@ -152,6 +158,7 @@ const checkLibrary = async () => {
     }
     if (isEmpty.value) {
         await updateList();
+        libarayEditUUID.value = viewStore.curLibrary.editUUID;
     }
     isEmpty.value = false;
 };

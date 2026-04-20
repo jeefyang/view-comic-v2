@@ -26,9 +26,15 @@ importers:
       helmet:
         specifier: ^8.1.0
         version: 8.1.0
+      iconv-lite:
+        specifier: ^0.7.2
+        version: 0.7.2
       nanoid:
         specifier: ^5.1.6
         version: 5.1.6
+      node-stream-zip:
+        specifier: ^1.15.0
+        version: 1.15.0
       pinia:
         specifier: ^3.0.4
         version: 3.0.4(typescript@5.9.3)(vue@3.5.28(typescript@5.9.3))
@@ -54,6 +60,9 @@ importers:
       '@types/node':
         specifier: ^24.10.9
         version: 24.10.13
+      '@vicons/antd':
+        specifier: ^0.13.0
+        version: 0.13.0
       '@vicons/fluent':
         specifier: ^0.13.0
         version: 0.13.0
@@ -845,6 +854,9 @@ packages:
     peerDependencies:
       vite: ^2.9.0 || ^3.0.0-0 || ^4.0.0 || ^5.0.0-0 || ^6.0.0-0 || ^7.0.0-0 || ^8.0.0-0
 
+  '@vicons/antd@0.13.0':
+    resolution: {integrity: sha512-yrUGoUSz2BbGupk9ghQOahc04n5H3MwUDM9pVPsLh9U1uqB47oRWZvYRiZaT1JKPqgTgSE6BXcVw4i9MOF4M+g==}
+
   '@vicons/fluent@0.13.0':
     resolution: {integrity: sha512-bYGZsOE3qzvm3Cm43e7tybgGlr5ZUpYqtRZq0g0Tfupe8jIzLolpvQLNUt1zS8Mgt6goTbUk5YH7Fkv16jkykg==}
 
@@ -1535,6 +1547,10 @@ packages:
 
   node-releases@2.0.27:
     resolution: {integrity: sha512-nmh3lCkYZ3grZvqcCH+fjmQ7X+H0OeZgP40OierEaAptX4XofMh5kwNbWh7lBduUzCcV/8kZ+NDLCwm2iorIlA==}
+
+  node-stream-zip@1.15.0:
+    resolution: {integrity: sha512-LN4fydt9TqhZhThkZIVQnF9cwjU3qmUH9h78Mx/K7d3VvfRqqwthLwJEUOEL0QPZ0XQmNN7be5Ggit5+4dq3Bw==}
+    engines: {node: '>=0.12.0'}
 
   npm-normalize-package-bin@4.0.0:
     resolution: {integrity: sha512-TZKxPvItzai9kN9H/TkmCtx/ZN/hvr3vUycjlfmH0ootY9yFBzNOpiXAdIn1Iteqsvk4lQn6B5PTrt+n6h8k/w==}
@@ -2875,6 +2891,8 @@ snapshots:
       unplugin-utils: 0.3.1
       vite: 7.3.1(@types/node@24.10.13)(jiti@2.6.1)(sass-embedded@1.97.3)(sass@1.97.3)(tsx@4.21.0)(yaml@2.8.2)
 
+  '@vicons/antd@0.13.0': {}
+
   '@vicons/fluent@0.13.0': {}
 
   '@vicons/ionicons5@0.13.0': {}
@@ -3616,6 +3634,8 @@ snapshots:
   node-gyp-build@4.8.4: {}
 
   node-releases@2.0.27: {}
+
+  node-stream-zip@1.15.0: {}
 
   npm-normalize-package-bin@4.0.0: {}
 

@@ -6,6 +6,18 @@
                 <n-icon v-if="props.item.isDir" :color="themeVars.warningColor" size="40">
                     <FolderFilled />
                 </n-icon>
+                <!-- 图片 -->
+                <n-icon v-else-if="props.item.extType == 'image'" :color="themeVars.infoColor" size="40">
+                    <FileImageFilled />
+                </n-icon>
+                <!-- 视频 -->
+                <n-icon v-else-if="props.item.extType == 'video'" :color="themeVars.warningColor" size="40">
+                    <ResizeVideo24Filled />
+                </n-icon>
+                <!-- 压缩包 -->
+                <n-icon v-else-if="props.item.extType == 'zip'" :color="themeVars.infoColor" size="40">
+                    <FileZipFilled />
+                </n-icon>
                 <!-- 文件 -->
                 <n-icon v-else :color="themeVars.infoColor" size="40">
                     <FileCopyRound />
@@ -29,6 +41,8 @@
 <script setup lang="ts">
 import { useThemeVars } from "naive-ui";
 import { FolderFilled, FileCopyRound } from "@vicons/material";
+import { FileZipFilled, FileImageFilled } from "@vicons/antd";
+import { ResizeVideo24Filled } from "@vicons/fluent";
 
 const themeVars = useThemeVars();
 

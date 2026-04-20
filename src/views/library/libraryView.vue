@@ -12,12 +12,17 @@
         </n-flex>
         <n-flex style="flex: 1; width: 100%" vertical>
             <!-- 空 -->
-            <n-flex style="width: 100%; height: 100%" justify="center" align="center" v-if="configSotre.libraryList.length == 0">
+            <n-flex style="width: 100%; height: 100%" justify="center" align="center" v-if="viewStore.libraryList.length == 0">
                 <n-empty description="书库是空的" size="huge"> </n-empty>
             </n-flex>
             <!-- 列表 -->
             <n-space vertical v-else>
-                <n-card :title="item.name" v-for="item in configSotre.libraryList" :key="item.name">
+                <n-card
+                    :title="item.name"
+                    v-for="item in viewStore.libraryList"
+                    :key="item.name"
+                    :style="{ 'border-color': item.editUUID == viewStore?.curLibrary?.editUUID ? themeVars.primaryColor : undefined }"
+                >
                     <div class="mb-2">{{ item.pathUrl }}</div>
                     <n-flex justify="space-between">
                         <n-button size="tiny" @click="toJump(item)" type="primary">跳转</n-button>
@@ -147,11 +152,12 @@ const toEdit = async (item: JsonLibrary) => {
 };
 
 const toUpdate = async (item: JsonLibrary) => {
-    const res = await libraryFetch.request("update", { ...item });
+    const res = await viewStore.updateLibrary(item);
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;
     }
+
     msg.success(res.msg || "");
 };
 
@@ -162,11 +168,11 @@ const toRemove = async (item: JsonLibrary) => {
         positiveText: "确定",
         negativeText: "取消",
         onPositiveClick: async () => {
-            const res = await libraryFetch.request("remove", { ...item });
+            const res = await viewStore.removeLibrary(item);
             if (res.code != 200) {
                 msg.error(res.msg || "");
+                return;
             }
-            msg.success(res.msg || "");
             getList();
         }
     });
@@ -184,7 +190,7 @@ const toTest = async (item: EditLibraryType) => {
 const toJump = (item: JsonLibrary) => {
     // window.open(item.pathUrl);
     viewStore.setLibrary(item);
-    router.push({ path: "/list" });
+    router.push({ path: "/shelf" });
 };
 
 const toCancel = () => {
@@ -192,7 +198,7 @@ const toCancel = () => {
 };
 
 const getList = async () => {
-    const res = await configSotre.updateLibraryList();
+    const res = await viewStore.updateLibraryList();
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;

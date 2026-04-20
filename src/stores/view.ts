@@ -1,10 +1,11 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
-import { viewFetch } from '@/utils/jFetch';
+import { libraryFetch, viewFetch } from '@/utils/jFetch';
 
 export const useViewStore = defineStore('view', () => {
     const saveKey = "view";
-    const curLibrary = ref(<JsonLibrary>{});
+    const libraryList = ref([] as JsonLibrary[]);
+    const curLibrary = ref(<Partial<JsonLibrary>>{});
     const shelfPath = ref(<string[]>[]);
     const shelfFolder = ref(<viewFolderType | undefined>undefined);
     const shelfFileList = ref(<ViewFileType[]>[]);
@@ -73,6 +74,45 @@ export const useViewStore = defineStore('view', () => {
         return [...shelfFileList.value];
     };
 
+    const updateLibraryList = async () => {
+        const res = await libraryFetch.request("getList");
+        if (res.code == 200) {
+            libraryList.value = res.data!;
+        }
+        return res;
+    };
+
+    const updateLibrary = async (item: JsonLibrary) => {
+        const res = await libraryFetch.request("update", { ...item });
+        if (res.code == 200) {
+            const json = res.data;
+            const index = libraryList.value.findIndex(item => item.uuid == json.uuid);
+            libraryList.value[index] = json;
+            if (json.uuid == curLibrary.value?.uuid) {
+                curLibrary.value = {};
+            }
+        }
+        save();
+        return res;
+    };
+
+    const removeLibrary = async (item: JsonLibrary) => {
+        const res = await libraryFetch.request("remove", { uuid: item.uuid });
+        if (res.code == 200) {
+            const json = res.data;
+            const index = libraryList.value.findIndex(item => item.uuid == json.uuid);
+            if (index != -1) {
+                libraryList.value.splice(index, 1);
+            }
+            const curIndex = libraryList.value.findIndex(item => item.uuid == curLibrary.value?.uuid);
+            if (curIndex != -1) {
+                curLibrary.value = {};
+            }
+        }
+        save();
+        return res;
+    };
+
     const setLibrary = (item: JsonLibrary) => {
         curLibrary.value = item;
         save();
@@ -82,6 +122,14 @@ export const useViewStore = defineStore('view', () => {
         const index = shelfFileList.value.findIndex(item => item.name == shelfJumpName.value);
         shelfJumpName.value = "";
         return index == -1 ? 0 : index;
+    };
+
+    const updateComicViewList = async (f: ViewFileType) => {
+        const res = await viewFetch.request("comicViewList", { editUUID: curLibrary.value.editUUID!, path: shelfPath.value.join('/'), file: f });
+        if (res.code == 200) {
+
+        }
+        return res;
     };
 
 
@@ -99,6 +147,9 @@ export const useViewStore = defineStore('view', () => {
         sortShelfFileList,
         shelfJumpName,
         getShelfJump,
-        shelfLoading
+        shelfLoading,
+        libraryList, updateLibraryList,
+        updateLibrary, removeLibrary,
+        updateComicViewList
     };
 });

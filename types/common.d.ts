@@ -37,7 +37,19 @@ type ViewFileType = {
     extType?: ViewFileExtType;
 };
 
-type ViewFileExtType = "zip" | "image" | "video"|"other";
+type ComicFileType = ViewFileType & {
+    index: number;
+};
+
+type ComicFileListType = {
+    list: ComicFileType[],
+    basePath: string,
+    start: number,
+    isZip: boolean;
+};
+
+
+type ViewFileExtType = "zip" | "image" | "video" | "other";
 
 type viewFolderType = {
     libUUID: string;
