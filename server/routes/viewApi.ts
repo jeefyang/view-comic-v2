@@ -123,7 +123,7 @@ export function useViewApi(router: Router) {
                     msg: "路径不存在"
                 };
             }
-            const comicData = await getComicViewList(url, from.file, from.nameEncoding);
+            const comicData = await getComicViewList(data[0]!,from.path, from.file, from.nameEncoding);
             if (comicData[1]) {
                 return {
                     code: 500,

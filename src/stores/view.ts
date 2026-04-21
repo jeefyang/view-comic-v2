@@ -126,9 +126,17 @@ export const useViewStore = defineStore('view', () => {
 
     const updateComicViewList = async (f: ViewFileType) => {
         const res = await viewFetch.request("comicViewList", { editUUID: curLibrary.value.editUUID!, path: shelfPath.value.join('/'), file: f });
-        if (res.code == 200) {
-
+        if (res.code != 200) {
+            return res;
         }
+        const data = res.data!;
+        const url = `api/file/${curLibrary.value.editUUID}/${data.start}/${data.basePath}`;
+        console.log(url);
+        const img = new Image();
+        img.src = url;
+        img.onload = () => {
+            console.log(img.width, img.height);
+        };
         return res;
     };
 

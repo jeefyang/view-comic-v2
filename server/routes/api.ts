@@ -9,6 +9,7 @@ import path from "path";
 import { getComicViewList, getComicViewListByFile } from '../utils/view.js';
 import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
+import { pipeline } from 'stream';
 
 const router: Router = Router();
 
@@ -18,46 +19,75 @@ useLibraryApi(router);
 useViewApi(router);
 
 // 文件读取
-router.get("/file/:fromPath", async (req, res) => {
-    if (!req.params.fromPath) {
+router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
+    const editUUID = req.params.editUUID;
+    const index = req.params.index;
+    const fromPathList = req.params.fromPathList;
+    if (!editUUID || !index) {
         return res.send(404);
     }
-    const { editUUID, index } = req.query;
-    if (!editUUID || index == undefined) {
+    const fromPath = path.join(...fromPathList || []);
+
+    const num = parseInt(index);
+    if (isNaN(num)) {
         return res.send(404);
     }
-    const num = parseInt(index.toString());
-    const data = getLibPathByUUID(undefined, editUUID.toString());
+    const data = getLibPathByUUID(undefined, editUUID);
     if (data[1]) {
         return res.send(404);
     }
-    const url = path.join(data[0]!, req.params.fromPath);
+    const url = path.join(data[0]!, fromPath);
     if (!fs.existsSync(url)) {
         res.send(404);
     }
-    const stat = fs.statSync(url);
-    if (stat.isDirectory()) {
-        const data = getComicViewListByFile(url);
-        if (data[1]) {
-            return res.send(404);
+    try {
+        const stat = fs.statSync(url);
+        if (stat.isDirectory()) {
+            const data = getComicViewListByFile([url]);
+            if (data[1]) {
+                return res.send(404);
+            }
+
+            const fileP = path.join(url, data[0]!.list[num].name);
+            res.setHeader("Content-Type", getContentType(fileP));
+            // res.setHeader("Content-Length", data[0]!.list[num].size);
+            const stream = fs.createReadStream(fileP);
+            // pipeline(stream, res, err => {
+            //     if (err) {
+            //         console.error('读取文件时出错:', err);
+            //     }
+            //     if (!res.headersSent) {
+            //         res.status(500).send('传输中断');
+            //     }
+            // });
+            stream.pipe(res);
+            stream.on('error', (err) => {
+                console.error('读取文件时出错:', err);
+            });
+
         }
-
-        const fileP = path.join(url, data[0]!.list[num].name);
-        res.setHeader("Content-Type", getContentType(fileP));
-        fs.createReadStream(fileP).pipe(res);
-    }
-    else {
-        const data = await getMyStreamZip(url);
-        if (data[1]) {
-            return res.send(404);
+        else {
+            const data = await getMyStreamZip(url);
+            if (data[1]) {
+                return res.send(404);
+            }
+            const obj = data[0]!;
+            res.setHeader("Content-Type", getContentType(obj.fileList[num].name));
+            res.setHeader("Content-Length", obj.fileList[num].size);
+            const stream = await obj.getFileByIndex(num);
+            if (!stream) {
+                return res.send(404);
+            }
+            stream.pipe(res);
+            stream.on('end', () => {
+                obj.finishStream();
+            });
         }
-
-        res.setHeader("Content-Type", getContentType(data[0]!.fileList[num].name));
-        (await data[0]?.getFileByIndex(num))?.pipe(res);
-
     }
-    require("fs").existsSync(url) && require("fs").createReadStream(url).pipe(res);
-    res.send(404);
+    catch (error) {
+        res.status(500).send('文件读取失败');
+    }
+
 });
 
 // 缩略图

@@ -46,7 +46,8 @@ const toClick = async (item: ViewFileType) => {
         viewStore.updateShelfFolder();
         return;
     }
-    if (item.extType == "zip") {
+    const list: ViewFileExtType[] = ["image", "zip"];
+    if (list.includes(item.extType)) {
         viewStore.updateComicViewList(item);
         return;
     }

@@ -2,7 +2,7 @@ import { imageTypeList, zipTypeList } from "@common/utils/ext";
 import path from "path";
 
 export function getSizeStr(size: number) {
-    const sizeList: string[] = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const sizeList: string[] = ['KB', 'MB', 'GB', 'TB'];
     let sizeSplit = size;
     let sizeStr = "";
     for (let i = 0; i < sizeList.length; i++) {

@@ -2,6 +2,7 @@ import { imageTypeList, zipTypeList } from "@common/utils/ext";
 import StreamZip from "node-stream-zip";
 import { getFileExt, getSizeStr } from ".";
 import iconv from "iconv-lite";
+import { nanoid } from "nanoid";
 
 
 const maxCount = 10;
@@ -14,6 +15,7 @@ class MyStreamZip {
     curEntries: StreamZip.ZipEntry[] = [];
     updateTime: number = -1;
     isWork = false;
+    protected finishStreamFnList: { uuid: string, fn: () => void; }[] = [];
     constructor(public p: string, public nameEncoding?: string) {
         if (!this.nameEncoding) {
             this.nameEncoding = process.env.DEFAULT_ZIPCODE?.trim();
@@ -96,6 +98,16 @@ class MyStreamZip {
         await this.init();
         this.isWork = false;
         return this;
+    }
+
+    addFinishStreamFn(fn: () => void) {
+        const uuid = nanoid(8);
+        this.finishStreamFnList.push({ uuid: uuid, fn });
+        return uuid;
+    }
+
+    finishStream() {
+        this.finishStreamFnList.forEach(c => c.fn());
     }
 }
 

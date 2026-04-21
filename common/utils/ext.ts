@@ -1,5 +1,4 @@
 import path from "path";
-import { p } from "vue-router/dist/index-Cu9B0wDz.mjs";
 export const zipTypeList = ['zip', "rar"];
 export const imageTypeList = ['png', "jpg", "jpeg", "gif", "webp", "apng"];
 export const contentTypeList = {

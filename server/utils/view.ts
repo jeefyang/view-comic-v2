@@ -30,7 +30,8 @@ export function getViewFile(p: string) {
     return file;
 }
 
-export function getComicViewListByFile(p: string): [ComicFileListType | undefined, any] {
+export function getComicViewListByFile(urls: string[]): [ComicFileListType | undefined, any] {
+    const p = path.join(...urls);
     const stat = fs.statSync(p);
     const isDir = stat.isDirectory();
     const dir = isDir ? p : path.dirname(p);
@@ -55,7 +56,7 @@ export function getComicViewListByFile(p: string): [ComicFileListType | undefine
         len = list.push({ ...f, index: len });
     }
     return [{
-        basePath: dir,
+        basePath: urls.length == 1 ? dir : path.join(...[...urls].slice(1, isDir ? undefined : -1)),
         start,
         isZip: false,
         list
@@ -64,8 +65,8 @@ export function getComicViewListByFile(p: string): [ComicFileListType | undefine
 
 }
 
-export async function getComicViewList(url: string, f: ViewFileType, nameEncoding?: string): Promise<[ComicFileListType | undefined, any]> {
-    const p = path.join(url, f.name);
+export async function getComicViewList(baseUrl: string, url: string, f: ViewFileType, nameEncoding?: string): Promise<[ComicFileListType | undefined, any]> {
+    const p = path.join(baseUrl, url, f.name);
     if (f.extType == 'zip') {
         const zipData = await getMyStreamZip(p, nameEncoding);
         if (zipData[1]) {
@@ -73,10 +74,10 @@ export async function getComicViewList(url: string, f: ViewFileType, nameEncodin
         }
         return [{
             list: zipData[0]!.getList(),
-            basePath: p,
+            basePath: path.join(url, f.name),
             isZip: true,
             start: 0
         }, undefined];
     }
-    return [getComicViewListByFile(p)[0], undefined];
+    return [getComicViewListByFile([baseUrl, url, f.name])[0], undefined];
 }
