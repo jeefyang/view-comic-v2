@@ -1,8 +1,7 @@
-import { imageTypeList, zipTypeList } from "@common/utils/ext";
 import StreamZip from "node-stream-zip";
 import { getFileExt, getSizeStr } from ".";
-import iconv from "iconv-lite";
 import { nanoid } from "nanoid";
+
 
 
 const maxCount = 10;
@@ -10,10 +9,11 @@ const list: { p: string, stream: MyStreamZip; nameEncoding?: string; }[] = [];
 
 class MyStreamZip {
 
-    obj: StreamZip.StreamZipAsync | undefined = undefined;
+    obj: StreamZip | undefined = undefined;
     fileList: ComicFileType[] = [];
     curEntries: StreamZip.ZipEntry[] = [];
     updateTime: number = -1;
+    len: number = 0;
     isWork = false;
     protected finishStreamFnList: { uuid: string, fn: () => void; }[] = [];
     constructor(public p: string, public nameEncoding?: string) {
@@ -24,14 +24,26 @@ class MyStreamZip {
     }
 
     private create() {
-        this.obj = new StreamZip.async({ file: this.p, nameEncoding: this.nameEncoding });
+
         this.updateTime = new Date().getTime();
     }
 
 
+
+
     async init() {
         this.isWork = true;
-        const entries = await this.obj?.entries() || {};
+        this.obj = new StreamZip({ file: this.p, nameEncoding: this.nameEncoding });
+        const entries: StreamZip.ZipEntry[] = [];
+        await new Promise((res, rej) => {
+            this.obj?.on("ready", () => {
+                res(undefined);
+            });
+            this.obj!.on("entry", (entry) => {
+                entries.push(entry);
+            });
+        });
+
         this.curEntries = [];
         let len = 0;
         const incldeExts: ViewFileExtType[] = ['image', 'video'];
@@ -59,6 +71,7 @@ class MyStreamZip {
             len = list.push(file);
             this.curEntries.push(entry);
         }
+        this.len = len;
         this.fileList = list;
         this.isWork = false;
     }
@@ -71,7 +84,14 @@ class MyStreamZip {
         if (!this.obj) {
             return false;
         }
-        await this.obj.close();
+        await new Promise((res, rej) => {
+            this.obj!.close((err) => {
+                if (err) {
+                    return rej(err);
+                }
+                res(undefined);
+            });
+        });
         this.obj = undefined;
         this.fileList = [];
         this.curEntries = [];
@@ -82,14 +102,23 @@ class MyStreamZip {
         if (!this.obj) {
             return;
         }
-        const stream = await this.obj.stream(this.curEntries[index]);
+        const stream = await new Promise<NodeJS.ReadableStream>((res, rej) => {
+            this.obj!.stream(this.curEntries[index], (err, stream) => {
+                if (err) {
+                    rej(err);
+                    return;
+                }
+                res(stream!);
+            });
+        });
+
         return stream;
     }
 
     async rebuild(nameEncoding?: string) {
         this.isWork = true;
         if (this.obj) {
-            await this.obj.close();
+            await this.close();
         }
         if (nameEncoding) {
             this.nameEncoding = nameEncoding;
