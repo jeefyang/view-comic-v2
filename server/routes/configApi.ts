@@ -18,6 +18,4 @@ export function useConfigApi(router: Router) {
             data: config
         };
     });
-
-
 };

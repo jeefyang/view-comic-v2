@@ -4,7 +4,7 @@
         <n-global-style />
         <n-dialog-provider>
             <n-message-provider>
-                <div id="main">
+                <div id="main" v-if="configStore.isInit">
                     <!-- 所有页面都缓存 -->
 
                     <router-view v-slot="{ Component }">
@@ -16,7 +16,7 @@
                     <!-- 底部导航（仅在需要时显示） -->
                     <AppBottomNav v-if="$route.meta.showBottomNav" />
                 </div>
-                <XLogin v-model:show="config.showLogin"</XLogin>
+                <XLogin v-model:show="configStore.showLogin"</XLogin>
             </n-message-provider>
         </n-dialog-provider>
     </n-config-provider>
@@ -32,7 +32,7 @@ import XLogin from "./components/XLogin.vue";
 import { configFetch, libraryFetch, userFetch, viewFetch } from "./utils/jFetch";
 import type { ResSendType } from "@common/apis/tools/apiUrlsTrans";
 
-const config = useConfigStore();
+const configStore = useConfigStore();
 
 // 响应式暗色主题（可选）
 const isDark = useDark();
@@ -45,12 +45,12 @@ const cachedViews = [
     "readerView" // ← 阅读页也缓存！
 ];
 
-onMounted(() => {
+onMounted(async () => {
 [userFetch, configFetch, libraryFetch,viewFetch].forEach(item => {
     item.getHeaderFn = async () => {
         const headers = new Headers({
             "Content-Type": "application/json",
-            "token": config.token || "",
+            "token": configStore.token || "",
 
         });
         return headers;
@@ -67,6 +67,8 @@ onMounted(() => {
         return;
     });
 });
+await configStore.initConfig()
+configStore.isInit = true;
 });
 </script>
 

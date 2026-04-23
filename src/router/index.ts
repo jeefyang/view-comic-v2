@@ -27,7 +27,7 @@ const routes: RouteRecordRaw[] = [
         meta: { showBottomNav: true, title: '设置' }
     },
     {
-        path: '/reader/:comicId',
+        path: '/reader',
         name: "readerView",
         component: ReaderView,
         props: true,

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import bcrypt from 'bcrypt';
-import { addTokenCache, tokenCache, User_FILE } from './cache';
+import { addTokenCache, tokenCache, USER_FILE, USERCONFIG_FILE } from './cache';
 import { nanoid } from "nanoid";
 import { type Request, type Response } from "express";
 import { ResSendType } from '@common/apis/tools/apiUrlsTrans';
@@ -8,6 +8,7 @@ import { ResSendType } from '@common/apis/tools/apiUrlsTrans';
 
 const saltRounds = 12;
 let userCache: JsonUser[] = [];
+let userConfigCache: UserConfigType[] = [];
 
 export function filterUsers(list: JsonUser[], target?: Partial<JsonUser>) {
     if (!target) {
@@ -28,9 +29,10 @@ export function filterUsers(list: JsonUser[], target?: Partial<JsonUser>) {
 function initUsers(): JsonUser[] {
 
     try {
+
         // 如果 config.json 已存在，直接读取
-        if (fs.existsSync(User_FILE)) {
-            const data = fs.readFileSync(User_FILE, 'utf8');
+        if (fs.existsSync(USER_FILE)) {
+            const data = fs.readFileSync(USER_FILE, 'utf8');
             return JSON.parse(data);
         }
 
@@ -75,6 +77,40 @@ export function readUsers(target?: Partial<JsonUser>): JsonUser[] {
         userCache = initUsers();
     }
     return filterUsers(userCache, target);
+}
+
+export function getUserConfig(userUUID: string): UserConfigType {
+    const index = userConfigCache.findIndex(c => c.userUUID == userUUID);
+    if (index == -1) {
+        return { userUUID };
+    }
+    return userConfigCache[index];
+
+}
+
+export function readUserConfigs(): UserConfigType[] {
+    if (!fs.existsSync(USERCONFIG_FILE)) {
+        fs.writeFileSync(USERCONFIG_FILE, JSON.stringify(userConfigCache, null, 4), 'utf8');
+        return userConfigCache;
+    }
+    userConfigCache = JSON.parse(fs.readFileSync(USERCONFIG_FILE, 'utf8'));
+    return userConfigCache;
+}
+
+export function updateUserConfigs(item: UserConfigType) {
+    let index = userConfigCache.findIndex(c => c.userUUID == item.userUUID);
+    if (index == -1) {
+        index = userConfigCache.push(item) - 1;
+
+    }
+    else {
+        Object.keys(item).forEach(key => {
+            // @ts-expect-error
+            userConfigCache[index][key] = item[key];
+        });
+    }
+    fs.writeFileSync(USERCONFIG_FILE, JSON.stringify(userConfigCache, null, 4), 'utf8');
+    return userConfigCache[index];
 }
 
 export function getUserGroupList() {
@@ -139,7 +175,7 @@ export function addUser(editData: EditUserType): [JsonUser | undefined, any] {
 
 export function updateUsers(list: JsonUser[]) {
     userCache = list;
-    fs.writeFileSync(User_FILE, JSON.stringify(list, null, 4), 'utf8');
+    fs.writeFileSync(USER_FILE, JSON.stringify(list, null, 4), 'utf8');
 }
 
 /** 验证用户 */

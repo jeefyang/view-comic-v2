@@ -56,9 +56,9 @@ export function getComicViewListByFile(urls: string[]): [ComicFileListType | und
         len = list.push({ ...f, index: len });
     }
     return [{
-        basePath: urls.length == 1 ? dir : path.join(...[...urls].slice(1, isDir ? undefined : -1)),
+        baseFile: urls.length == 1 ? getViewFile(dir)! : getViewFile(path.join(...[...urls].slice(1, isDir ? undefined : -1)))!,
         start,
-        isZip: false,
+        basePath: urls.length == 1 ? dir : path.join(...[...urls].slice(1, isDir ? undefined : -1)),
         list
     }, undefined];
 
@@ -74,8 +74,8 @@ export async function getComicViewList(baseUrl: string, url: string, f: ViewFile
         }
         return [{
             list: zipData[0]!.getList(),
+            baseFile: f,
             basePath: path.join(url, f.name),
-            isZip: true,
             start: 0
         }, undefined];
     }

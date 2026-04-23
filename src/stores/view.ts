@@ -16,11 +16,13 @@ export const useViewStore = defineStore('view', () => {
     const shelfJumpName = ref(<string>"");
     const shelfScrollName = ref(<string>"");
     const shelfLoading = ref(false);
+    const comicFileList = ref({} as ComicFileListType);
+
 
 
     const returnData = {
         curLibrary, shelfPath, shelfSearchKey, shelfSortType, shelfSortValue
-        , shelfIncludeType, shelfScrollName
+        , shelfIncludeType, shelfScrollName, comicFileList
     };
 
     const save = () => {
@@ -130,13 +132,8 @@ export const useViewStore = defineStore('view', () => {
             return res;
         }
         const data = res.data!;
-        const url = `api/file/${curLibrary.value.editUUID}/${data.start}/${data.basePath}`;
-        console.log(url);
-        const img = new Image();
-        img.src = url;
-        img.onload = () => {
-            console.log(img.width, img.height);
-        };
+        comicFileList.value = data;
+        save()
         return res;
     };
 

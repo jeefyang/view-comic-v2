@@ -1,70 +1,58 @@
 <!-- src/views/ReaderView.vue -->
 <template>
-  <div class="reader-container">
-    <!-- 漫画阅读器（可横向/纵向滑动） -->
-    <div class="pages">
-      <img
-        v-for="page in pages"
-        :key="page.id"
-        :src="page.url"
-        class="page-image"
-        loading="lazy"
-      />
+    <div class="reader-container">
+        <waterfall :jump="jump" v-if="isInit"></waterfall>
     </div>
-
-    <!-- 返回按钮（左上角） -->
-    <n-button
-      circle
-      size="small"
-      class="back-btn"
-      @click="$router.back()"
-    >
-      <n-icon :component="ArrowBackOutline" />
-    </n-button>
-  </div>
 </template>
 
 <script setup lang="ts">
-import { ArrowBackOutline } from '@vicons/ionicons5'
-import { onMounted, ref } from 'vue'
+import { useConfigStore } from "@/stores/config";
+import { useViewStore } from "@/stores/view";
+import { onActivated, onMounted, ref } from "vue";
+import Waterfall from "./components/Waterfall.vue";
 
-// 模拟漫画页面
-const pages = ref([
-  { id: 1, url: '/mock/1.jpg' },
-  { id: 2, url: '/mock/2.jpg' },
-  // ...
-])
+const readerEditUUid = ref("");
+const readerPath = ref("");
+const readerStart = ref(0);
+const isInit = ref(false);
+
+const jump = ref(0);
+
+const configStore = useConfigStore();
+const viewStore = useViewStore();
+
+const toHome = () => {};
+const init = () => {
+    isInit.value=true
+    if (!viewStore.curLibrary || !viewStore.curLibrary.editUUID) {
+        return toHome();
+    }
+    console.log(viewStore.comicFileList)
+    if (!viewStore.comicFileList || !viewStore.comicFileList.baseFile || viewStore.comicFileList.list.length == 0) {
+        return toHome;
+    }
+};
+
+const update = () => {};
 
 onMounted(() => {
-  // 进入时锁定竖屏 or 横屏（可选）
-  document.body.style.overflow = 'hidden'
-})
+    console.log("reader");
+    window.addEventListener("resize", () => {
+        console.log("resize");
+    });
+});
+
+onActivated(() => {
+    init();
+});
 </script>
 
 <style scoped>
 .reader-container {
-  width: 100vw;
-  height: 100vh;
-  overflow: auto;
-  background: #000;
-  position: relative;
-}
-
-.pages {
-  display: flex;
-  flex-direction: column; /* 竖屏阅读 */
-  /* 或 flex-direction: row; /* 横屏阅读 */
-}
-
-.page-image {
-  width: 100%;
-  display: block;
-}
-
-.back-btn {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 100;
+    width: 100vw;
+    height: 100vh;
+    position: absolute;
+    top: 0;
+    left: 0;
 }
 </style>

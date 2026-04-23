@@ -3,7 +3,7 @@
         <n-card style="width: 600px" title="修改用户" :bordered="false" role="dialog" aria-modal="true">
             <n-form ref="formRef" :model="formData">
                 <n-form-item path="username" label="原用户名">
-                    {{ configSotre.username }}
+                    {{ configStore.username }}
                 </n-form-item>
                 <n-form-item path="password" label="原密码">
                     <n-input v-model:value="formData.password" type="password" placeholder="请输入密码" />
@@ -44,7 +44,7 @@ const formData = reactive({
     repeatPassword: ""
 });
 
-const configSotre = useConfigStore();
+const configStore = useConfigStore();
 const msg = useMessage();
 
 const emits = defineEmits<{
@@ -65,7 +65,7 @@ const modelShow = computed({
 });
 
 const toEdit = async () => {
-    if (!configSotre.isLogin) {
+    if (!configStore.isLogin) {
         msg.warning("请先登录");
         return;
     }
@@ -81,13 +81,13 @@ const toEdit = async () => {
         msg.error("密码不一致");
         return;
     }
-    const res = await userFetch.request("edit", { ...formData, userUUID: configSotre.userUUID });
+    const res = await userFetch.request("edit", { ...formData, userUUID: configStore.userUUID });
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;
     }
-    configSotre.toLogout();
+    configStore.toLogout();
     modelShow.value = false;
-    configSotre.showLogin = true;
+    configStore.showLogin = true;
 };
 </script>

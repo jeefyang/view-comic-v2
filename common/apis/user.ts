@@ -23,7 +23,9 @@ export const UserApiUrl = apiUrlsTrans("user/", {
             adminToken: string, adminUUID: string, userUUID: string;
         }
     },
-    list: { method: "GET", to: {} as WebUserType[] }
+    list: { method: "GET", to: {} as WebUserType[] },
+    getUserConfig: { method: "GET", to: {} as UserConfigType },
+    setUserConfig: { method: "POST", from: {} as UserConfigType, to: {} as UserConfigType },
 
 });
 

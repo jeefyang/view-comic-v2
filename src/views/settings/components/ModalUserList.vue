@@ -39,7 +39,7 @@
                 <n-form-item label="用户组:">
                     <n-flex vertical style="width: 100%">
                         <div>
-                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="configSotre.groupList" @select="toSelectGroup">
+                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="configStore.groupList" @select="toSelectGroup">
                                 <n-button>分组</n-button>
                             </n-dropdown>
                         </div>
@@ -74,7 +74,7 @@ const datalist = ref(<WebUserType[]>[]);
 
 const dialog = useDialog();
 
-const configSotre = useConfigStore();
+const configStore = useConfigStore();
 const msg = useMessage();
 
 const editItem = ref(<WebUserType | undefined>undefined);
@@ -110,8 +110,8 @@ const toSubmit = async (item: WebUserType) => {
         return msg.warning("请输入用户组");
     }
     const res = await userFetch.request("editGroup", {
-        adminToken: configSotre.token,
-        adminUUID: configSotre.userUUID,
+        adminToken: configStore.token,
+        adminUUID: configStore.userUUID,
         userUUID: item.uuid,
         group: editGroup.value
     });
@@ -140,7 +140,7 @@ const getList = async () => {
     }
     const list = res.data || [];
     datalist.value = list;
-    configSotre.updateGroupList();
+    configStore.updateGroupList();
     return res;
 };
 
@@ -155,7 +155,7 @@ const toDel = async (item: WebUserType) => {
         positiveText: "确定",
         negativeText: "取消",
         onPositiveClick: async () => {
-            const res = await userFetch.request("delete", { userUUID: item.uuid, adminToken: configSotre.token, adminUUID: configSotre.userUUID });
+            const res = await userFetch.request("delete", { userUUID: item.uuid, adminToken: configStore.token, adminUUID: configStore.userUUID });
             if (res.code != 200) {
                 msg.error(res.msg || "");
                 return;

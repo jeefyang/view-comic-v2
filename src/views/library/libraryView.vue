@@ -2,7 +2,7 @@
     <n-flex vertical style="height: 100%">
         <n-flex justify="space-between" style="width: 100%">
             <div>
-                <n-icon size="50" :color="themeVars.primaryColor" @click="addLibraryFn" v-if="configSotre.userType == 'admin'">
+                <n-icon size="50" :color="themeVars.primaryColor" @click="addLibraryFn" v-if="configStore.userType == 'admin'">
                     <Add12Filled />
                 </n-icon>
             </div>
@@ -27,7 +27,7 @@
                     <n-flex justify="space-between">
                         <n-button size="tiny" @click="toJump(item)" type="primary">跳转</n-button>
                         <n-flex>
-                            <template v-if="configSotre.userType == 'admin'">
+                            <template v-if="configStore.userType == 'admin'">
                                 <n-button size="tiny" @click="toUpdate(item)" type="primary">更新</n-button>
                                 <n-button size="tiny" @click="toEdit(item)" type="primary">编辑</n-button>
                                 <n-button size="tiny" @click="toTest(item)">测试</n-button>
@@ -50,7 +50,7 @@
                 <XDropdownInput v-model:value="formData.pathUrl" :options="showPathOptions" placeholder="输入路径,/添加提示" @change="hadndlePathInput"></XDropdownInput>
             </n-form-item>
             <n-form-item label="分组" path="groupList">
-                <n-select v-model:value="formData.groupList" multiple :options="configSotre.groupList" />
+                <n-select v-model:value="formData.groupList" multiple :options="configStore.groupList" />
             </n-form-item>
             <n-flex>
                 <n-button type="primary" @click="toSave">保存</n-button>
@@ -76,7 +76,7 @@ const themeVars = useThemeVars();
 const openDrawer = ref(false);
 const drawerType = ref(<"add" | "edit">"add");
 const formRef = ref(null);
-const configSotre = useConfigStore();
+const configStore = useConfigStore();
 const viewStore = useViewStore();
 const route = useRoute();
 const router = useRouter();
@@ -207,7 +207,7 @@ const getList = async () => {
 };
 
 const getGroupList = async () => {
-    const res = await configSotre.updateGroupList();
+    const res = await configStore.updateGroupList();
     if (res.code != 200) {
         return msg.error(res.msg || "");
     }

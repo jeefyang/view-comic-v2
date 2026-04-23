@@ -10,7 +10,7 @@
                 </n-form-item>
             </n-form>
             <template #footer>
-                <n-button class="mr-4" v-if="configSotre.token" @click="modelShow = false">取消</n-button>
+                <n-button class="mr-4" v-if="configStore.token" @click="modelShow = false">取消</n-button>
                 <n-button type="primary" @click="toLogin">登录</n-button>
             </template>
         </n-card>
@@ -34,7 +34,7 @@ const formData = reactive({
     password: ""
 });
 
-const configSotre = useConfigStore();
+const configStore = useConfigStore();
 const viewStore = useViewStore();
 const msg = useMessage();
 
@@ -63,9 +63,10 @@ const toLogin = async () => {
         msg.error(res.msg || "");
         return;
     }
-    configSotre.toLogin(res.data!);
-    configSotre.updateGroupList();
+    configStore.toLogin(res.data!);
+    configStore.updateGroupList();
     viewStore.updateLibraryList();
+    await configStore.initConfig();
     modelShow.value = false;
 };
 </script>

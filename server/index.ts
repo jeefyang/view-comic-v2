@@ -10,13 +10,14 @@ import { fileURLToPath } from 'node:url';
 
 import router from './routes/api.js';
 import { readConfig } from './utils/config.js';
-import { readUsers } from './utils/user.js';
+import { readUserConfigs, readUsers } from './utils/user.js';
 import { readTokenCache } from './utils/cache.js';
 import { readLibs } from './utils/library.js';
 
 const app: Express = express();
 readConfig();
 readUsers();
+readUserConfigs();
 readTokenCache();
 readLibs();
 

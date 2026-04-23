@@ -18,6 +18,8 @@ import { nanoid } from "nanoid";
 import FileItem from "./FileItem.vue";
 import { useElementSize } from "@vueuse/core";
 import { useMessage } from "naive-ui";
+import { t } from "vue-router/dist/index-Cu9B0wDz.mjs";
+import router from "@/router";
 
 const viewStore = useViewStore();
 const containerHeight = ref(<number>10);
@@ -48,7 +50,12 @@ const toClick = async (item: ViewFileType) => {
     }
     const list: ViewFileExtType[] = ["image", "zip"];
     if (list.includes(item.extType)) {
-        viewStore.updateComicViewList(item);
+        const res = await viewStore.updateComicViewList(item);
+        if (res.code != 200) {
+            msg.error(res.msg);
+            return;
+        }
+        router.push({ path: "/reader" });
         return;
     }
     msg.warning("暂不支持读取此文件");

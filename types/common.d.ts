@@ -39,14 +39,18 @@ type ViewFileType = {
 
 type ComicFileType = ViewFileType & {
     index: number;
+    width?: number;
+    height?: number;
 };
 
 type ComicFileListType = {
     list: ComicFileType[],
-    basePath: string,
+    baseFile: ViewFileType,
     start: number,
-    isZip: boolean;
+    basePath: string;
 };
+
+
 
 
 type ViewFileExtType = "zip" | "image" | "video" | "other";
@@ -76,7 +80,10 @@ interface JsonUser {
 
 type UserTypeType = 'admin' | 'user';
 
-type configType = {
+type UserConfigType = {
+    userUUID: string;
+    padding?: number;
+    pageMargin?: number;
 };
 
 type EditLibraryType = {
@@ -114,3 +121,24 @@ type WebUserType = {
     uuid: string;
 };
 
+type WaterfallPageType = {
+    url: string,
+    /** 是否已经加载过了 */
+    loaded: boolean,
+    /** 内容应该显示的宽度 */
+    contentWidth: number,
+    /** 内容应该显示的高度 */
+    contentHeight: number,
+    /** 显示的宽(包含边距) */
+    displayWidth: number,
+    /** 显示的高(包含边距) */
+    displayHeight: number,
+    /** 滚动的位置 */
+    scroll: number;
+    /** 装载的元素 */
+    InsertDom?: HTMLElement;
+    /** 预加载的元素 */
+    prelodDom?: HTMLElement;
+    /** 排序后的位置 */
+    sortIndex: number;
+} & ComicFileType;

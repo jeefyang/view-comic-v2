@@ -7,15 +7,24 @@ export const useConfigStore = defineStore('config', () => {
     const username = ref("");
     const userUUID = ref("");
     const userType = ref(<UserTypeType>"user");
+    const padding = ref(2);
+    const pageMargin = ref(2);
+
 
     const saveKey = "config";
     const showLogin = ref(false);
+    const isInit = ref(false);
 
     const groupList = ref(<{ label: string, value: string, key: string; }[]>[]);
 
     const isLogin = computed(() => {
         return !!token.value && !!username.value;
     });
+
+
+    const cloudData = {
+        padding,pageMargin
+    };
 
     const returnData = {
         userType, token, username, userUUID
@@ -71,8 +80,23 @@ export const useConfigStore = defineStore('config', () => {
         return res;
     };
 
+    const initConfig = async () => {
+        const res = await userFetch.request('getUserConfig');
+        if (res.code != 200) {
+            return res;
+        }
+        const cloudKeys = Object.keys(res.data!);
+        Object.keys(cloudData).forEach(key => {
+            if (cloudKeys.includes(key)) {
+                cloudData[key].value = res.data![key];
+            }
+        });
+
+        return res;
+    };
+
 
 
     load();
-    return { ...returnData, showLogin, save, load, clear, toLogin, toLogout, isLogin, groupList, updateGroupList,  };
+    return { ...returnData, ...cloudData, showLogin, save, load, clear, toLogin, toLogout, isLogin, groupList, updateGroupList, isInit, initConfig };
 });

@@ -1,8 +1,9 @@
 
 import { TransExpressRouter } from "@common/apis/tools/transExpressRouter.js";
-import { addUser, deleteUser, editUser, editUserGroup, getUserFromToken, getUserGroupList, readUsers, userLogin, vertifyToken } from "../utils/user.js";
+import { addUser, deleteUser, editUser, editUserGroup, getUserConfig, getUserFromToken, getUserGroupList, readUsers, updateUserConfigs, userLogin, vertifyToken } from "../utils/user.js";
 import { Router } from 'express';
 import { UserApiUrl } from "@common/apis/user";
+
 
 export function useUserApi(router: Router) {
 
@@ -26,7 +27,7 @@ export function useUserApi(router: Router) {
         const target = data[0]!;
         return {
             code: 200,
-            data: { token: target.tokenData.token, username: target.userData.username, type: target.userData.type, group: target.userData.group,uuid:target.userData.uuid },
+            data: { token: target.tokenData.token, username: target.userData.username, type: target.userData.type, group: target.userData.group, uuid: target.userData.uuid },
         };
 
     });
@@ -59,8 +60,8 @@ export function useUserApi(router: Router) {
     });
 
     userRouter.setRouter("editGroup", async (from, req, res) => {
-        const { userUUID, adminToken, adminUUID,group} = from;
-        if (!userUUID ) {
+        const { userUUID, adminToken, adminUUID, group } = from;
+        if (!userUUID) {
             return {
                 code: 402,
                 msg: '用户uuid不能为空',
@@ -72,8 +73,8 @@ export function useUserApi(router: Router) {
                 msg: '请填写需要修改的分组',
             };
         }
-        
-        const data = editUserGroup({ editType: 'editGroup', userUUID, adminToken, adminUUID,group });
+
+        const data = editUserGroup({ editType: 'editGroup', userUUID, adminToken, adminUUID, group });
         if (data[1]) {
             return {
                 code: 500,
@@ -147,6 +148,50 @@ export function useUserApi(router: Router) {
         };
     });
 
+    userRouter.setRouter("setUserConfig", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
+        }
+
+        const token = <string>(req.headers.token);
+        const [user, err] = getUserFromToken(token);
+        if (err) {
+            return {
+                code: 500,
+                msg: err,
+            };
+        }
+        if (from.userUUID !== user?.uuid) {
+            return {
+                code: 502,
+                msg: "用户uuid不正确",
+            };
+        }
+        const data = updateUserConfigs(from);
+        return {
+            data
+        };
+    });
+
+    userRouter.setRouter("getUserConfig", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return { ...check, data: { userUUID: "" } };
+        }
+
+        const token = <string>(req.headers.token);
+        const [user, err] = getUserFromToken(token);
+        if (err) {
+            return {
+                code: 500,
+                msg: err,
+                data: { userUUID: "" }
+            };
+        }
+        return { data: getUserConfig(user?.uuid!) };
+    });
+
     userRouter.setRouter("list", async (from, req, res) => {
         const check = await vertifyToken(req, res);
         if (check) {
@@ -170,7 +215,7 @@ export function useUserApi(router: Router) {
         const users = readUsers();
         return {
             code: 200,
-            data: users.map(c => { return { username: c.username, type: c.type, group: c.group,uuid:c.uuid }; })
+            data: users.map(c => { return { username: c.username, type: c.type, group: c.group, uuid: c.uuid }; })
         };
     });
 

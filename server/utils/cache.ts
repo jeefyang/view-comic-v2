@@ -8,10 +8,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const DATA_DIR = path.resolve(__dirname, '../../data');
-export const User_FILE = path.join(DATA_DIR, 'user.json');
+export const USER_FILE = path.join(DATA_DIR, 'user.json');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 export const LIBRARY_FILE = path.join(DATA_DIR, 'library.json');
 export const TOTKEN_FILE = path.join(DATA_DIR, 'totken.json');
+export const USERCONFIG_FILE = path.join(DATA_DIR, 'userConfig.json');
 
 
 // 确保 data 目录存在

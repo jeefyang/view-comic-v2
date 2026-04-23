@@ -14,7 +14,7 @@
                 <n-form-item path="group" label="用户组">
                     <n-flex vertical style="width: 100%">
                         <div>
-                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="configSotre.groupList" @select="(v) => (formData.group = v)">
+                            <n-dropdown placement="bottom-start" trigger="click" size="small" :options="configStore.groupList" @select="(v) => (formData.group = v)">
                                 <n-button>分组</n-button>
                             </n-dropdown>
                         </div>
@@ -50,7 +50,7 @@ const formData = reactive({
     group: ""
 });
 
-const configSotre = useConfigStore();
+const configStore = useConfigStore();
 const msg = useMessage();
 
 const emits = defineEmits<{
@@ -75,18 +75,18 @@ const onShow = () => {
 };
 
 const getGroupList = async () => {
-    const res = await configSotre.updateGroupList();
+    const res = await configStore.updateGroupList();
     if (res.code != 200) {
         msg.error(res.msg || "");
     }
 };
 
 const toAdd = async () => {
-    if (!configSotre.isLogin) {
+    if (!configStore.isLogin) {
         msg.warning("请先登录");
         return;
     }
-    if (configSotre.userType != "admin") {
+    if (configStore.userType != "admin") {
         msg.warning("权限不足");
         return;
     }
@@ -98,7 +98,7 @@ const toAdd = async () => {
         msg.warning("密码不一致");
         return;
     }
-    const res = await userFetch.request("add", { ...formData, adminToken: configSotre.token, adminUUID: configSotre.userUUID });
+    const res = await userFetch.request("add", { ...formData, adminToken: configStore.token, adminUUID: configStore.userUUID });
     if (res.code != 200) {
         msg.error(res.msg || "");
         return;
