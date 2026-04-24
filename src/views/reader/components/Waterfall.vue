@@ -4,8 +4,10 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
 import { useViewStore } from "@/stores/view";
+import { decodeSize } from "@/utils/decodeSize";
 import { c } from "naive-ui";
 import { onMounted, ref, watch } from "vue";
+import { p } from "vue-router/dist/index-Cu9B0wDz.mjs";
 
 const viewStore = useViewStore();
 const configStore = useConfigStore();
@@ -102,10 +104,11 @@ const resetData = () => {
         const width = item.width;
         const height = item.height;
         const isLoaded = !!item.width && !!item.height;
-        const contentWidth = isLoaded ? screenWidth : screenWidth;
-        const contentHeight = isLoaded ? (screenWidth / width) * height : screenHeight;
-        const displayWidth = contentWidth;
-        const displayHeight = contentHeight + configStore.pageMargin * 2;
+        const divWidth = isLoaded ? screenWidth : screenWidth;
+        const divHeight = isLoaded ? (screenWidth / width) * height : screenHeight;
+        const contentScale = isLoaded ? screenWidth / width : 1;
+        const displayWidth = divWidth;
+        const displayHeight = divHeight + configStore.pageMargin * 2;
 
         curScroll += displayHeight;
         return {
@@ -115,8 +118,9 @@ const resetData = () => {
             loaded: !!width && !!height,
             displayHeight,
             displayWidth,
-            contentWidth,
-            contentHeight,
+            divWidth,
+            divHeight,
+            contentScale,
             url: `api/file/${viewStore.curLibrary.editUUID!}/${item.index}/${viewStore.comicFileList.basePath}`,
             scroll: curScroll - displayHeight,
             sortIndex: index
@@ -138,11 +142,66 @@ const updatePage = (page: WaterfallPageType, width: number, height: number) => {
     page.width = width;
     page.height = height;
     page.loaded = true;
-    page.contentWidth = screenWidth;
-    page.contentHeight = (screenWidth / width) * height;
-    page.displayHeight = page.contentHeight + configStore.pageMargin * 2;
+    page.divWidth = screenWidth;
+    page.divHeight = (screenWidth / width) * height;
+    page.contentScale = screenWidth / width;
+    page.displayHeight = page.divHeight + configStore.pageMargin * 2;
     page.displayWidth = screenWidth;
     viewStore.save();
+};
+
+const createContentDiv = (page: WaterfallPageType) => {
+    const div = document.createElement("div");
+    div.style.marginTop = configStore.pageMargin + "px";
+    div.style.marginBottom = configStore.pageMargin + "px";
+    div.style.width = page.divWidth + "px";
+    div.style.height = page.divHeight + "px";
+    const img = new Image();
+    img.src = page.url;
+
+    const imgOnload = (width: number, height: number) => {
+        const oldDisplayHeight = page.displayHeight;
+        updatePage(page, width, height);
+        const deltaHeight = page.displayHeight - oldDisplayHeight;
+        for (let n = page.sortIndex + 1; n < sortPageList.length; n++) {
+            sortPageList[n].scroll += deltaHeight;
+        }
+        page.width = width;
+        page.height = height;
+        viewStore.comicFileList.list[page.index].width = width;
+        viewStore.comicFileList.list[page.index].height = height;
+        viewStore.save();
+        div.style.width = page.divWidth + "px";
+        div.style.height = page.divHeight + "px";
+        // img.style.transform = `scale(${page.contentScale})`;
+
+        img.style.width = page.divWidth + "px";
+
+        img.style.height = page.divHeight + "px";
+        page.loaded = true;
+    };
+    if (page.loaded) {
+        imgOnload(page.width, page.height);
+    }
+    if (!page.loaded) {
+        decodeSize(page.url).then(([size, err]) => {
+            if (err) {
+                console.warn(err);
+                return;
+            }
+            imgOnload(size.width, size.height);
+        });
+    }
+    img.onload = () => {
+        // if (page.loaded) {
+        //     return;
+        // }
+        const width = img.naturalWidth;
+        const height = img.naturalHeight;
+        imgOnload(width, height);
+    };
+    div.appendChild(img);
+    return div;
 };
 
 const setDisplayPage = (page: WaterfallPageType) => {
@@ -170,48 +229,15 @@ const setDisplayPage = (page: WaterfallPageType) => {
         }
         // 没找到就加入
         // 查找应该插哪个位置前面
-        index = [...oldPageList].reverse().findIndex((item) => page.sortIndex < item.sortIndex);
-        const div = document.createElement("div");
-        div.style.marginTop = configStore.pageMargin + "px";
-        div.style.marginBottom = configStore.pageMargin + "px";
-        div.style.width = page.contentWidth + "px";
-        div.style.height = page.contentHeight + "px";
-        const img = new Image();
-        img.src = page.url;
-        img.onload = () => {
-            // if (page.loaded) {
-            //     return;
-            // }
-            const width = img.width;
-            const height = img.height;
-            const oldDisplayHeight = page.displayHeight;
-            updatePage(page, width, height);
-            const deltaHeight = page.displayHeight - oldDisplayHeight;
-            for (let n = page.sortIndex + 1; n < sortPageList.length; n++) {
-                sortPageList[n].scroll += deltaHeight;
-            }
-            page.width = width;
-            page.height = height;
-            viewStore.comicFileList.list[page.index].width = width;
-            viewStore.comicFileList.list[page.index].height = height;
-            viewStore.save();
-            div.style.width = page.contentWidth + "px";
-            img.style.width = page.contentWidth + "px";
-            div.style.height = page.contentHeight + "px";
-            img.style.height = page.contentHeight + "px";
-            page.loaded = true;
-        };
-        div.appendChild(img);
+        index = [...oldPageList].findIndex((item) => page.sortIndex < item.sortIndex);
+        const div = createContentDiv(page);
         page.InsertDom = div;
         if (index == -1) {
             oldPageList.push(page);
             curContentDiv.appendChild(div);
-            console.log("push")
         } else {
-            console.log('insert')
-            const pageIndex = oldPageList[index].sortIndex;
+            curContentDiv.insertBefore(div, oldPageList[index].InsertDom);
             oldPageList.splice(index, 0, page);
-            curContentDiv.insertBefore(div, displayPageList[pageIndex].InsertDom);
         }
 
         if (page.sortIndex < oldStart) {
@@ -250,10 +276,6 @@ const setDisplayPage = (page: WaterfallPageType) => {
     curBottomHeight = bottomHeight;
     curBottomDiv.style.height = curBottomHeight + "px";
     displayPageList = [...oldPageList];
-    console.log(
-        page.sortIndex,
-        displayPageList.map((c) => c.sortIndex)
-    );
 };
 
 const getStart = (scrollTtype: -1 | 1) => {
@@ -280,7 +302,6 @@ const resetTopDiv = (jump: number) => {
             return;
         }
         const start = getStart(-1);
-        console.log("top",start);
         setDisplayPage(sortPageList[start]);
     });
     observer.observe(curTopDiv);
@@ -304,7 +325,6 @@ const resetBottomDiv = (jump: number) => {
             return;
         }
         const start = getStart(1);
-        console.log("bottom");
         setDisplayPage(sortPageList[start]);
     });
     observer.observe(curBottomDiv);
@@ -333,7 +353,6 @@ const refresh = (jump: number) => {
         scrollTime = setTimeout(() => {
             const start = getStart(curScrollType);
             setDisplayPage(sortPageList[start]);
-            console.log("scroll", start);
         }, scrollDelay);
     });
     scrollDiv.style.overflow = "auto";

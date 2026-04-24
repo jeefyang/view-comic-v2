@@ -125,10 +125,12 @@ type WaterfallPageType = {
     url: string,
     /** 是否已经加载过了 */
     loaded: boolean,
-    /** 内容应该显示的宽度 */
-    contentWidth: number,
-    /** 内容应该显示的高度 */
-    contentHeight: number,
+    /** div应该显示的宽度 */
+    divWidth: number,
+    /** div应该显示的高度 */
+    divHeight: number,
+    /** 内容缩放 */
+    contentScale: number,
     /** 显示的宽(包含边距) */
     displayWidth: number,
     /** 显示的高(包含边距) */

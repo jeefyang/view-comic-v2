@@ -20,11 +20,13 @@
     "fflate": "^0.8.2",
     "helmet": "^8.1.0",
     "iconv-lite": "^0.7.2",
+    "image-size": "^2.0.2",
     "nanoid": "^5.1.6",
     "node-stream-zip": "^1.15.0",
     "pinia": "^3.0.4",
     "vue": "^3.5.27",
     "vue-router": "^5.0.1",
+    "vue3-touch-events": "^5.0.15",
     "yauzl": "^3.3.0"
   },
   "devDependencies": {
@@ -52,6 +54,7 @@
     "unplugin-vue-components": "^31.0.0",
     "vfonts": "^0.0.3",
     "vite": "^7.3.1",
+    "vite-plugin-inspect": "^11.3.3",
     "vite-plugin-node": "^7.0.0",
     "vite-plugin-vue-devtools": "^8.0.5",
     "vue-tsc": "^3.2.4"

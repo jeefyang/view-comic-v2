@@ -9,7 +9,8 @@ import path from "path";
 import { getComicViewList, getComicViewListByFile } from '../utils/view.js';
 import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
-import { pipeline } from 'stream';
+import stream from "stream";
+import { Readable } from "stream";
 
 const router: Router = Router();
 
@@ -17,6 +18,45 @@ useConfigApi(router);
 useUserApi(router);
 useLibraryApi(router);
 useViewApi(router);
+
+const getLimitStream = (o: {
+    fileStream?: fs.ReadStream,
+    zipStream?: NodeJS.ReadableStream;
+    maxLimit: number;
+}) => {
+    let bytesSent = 0;
+    const limiterStream = new stream.PassThrough({
+        // 当有数据要通过时触发
+        transform(chunk, encoding, callback) {
+            // 如果已经达到或超过限制，直接停止
+            if (bytesSent >= o.maxLimit) {
+                // 销毁上游的 sourceStream，停止从压缩包读取数据
+                // curStream.destroy();
+                if (o.fileStream) {
+                    o.fileStream.destroy();
+                }
+                if (o.zipStream) {
+                    o.zipStream.pause();
+                    o.zipStream.unpipe();
+                }
+
+                // 结束当前的 limiterStream
+                this.push(null);
+                return;
+            }
+
+            // 计算当前这个 chunk 有多少字节是可以发送的
+            const bytesToSend = Math.min(chunk.length, o.maxLimit - bytesSent);
+
+            // 只推送允许发送的那部分数据
+            this.push(chunk.slice(0, bytesToSend));
+            bytesSent += bytesToSend;
+
+            callback();
+        }
+    });
+    return limiterStream;
+};
 
 // 文件读取
 router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
@@ -40,6 +80,7 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     if (!fs.existsSync(url)) {
         res.send(404);
     }
+    const limitRange = req.headers.range ? parseInt(req.headers.range.split('-')[1]) : 0;
     try {
         const stat = fs.statSync(url);
         if (stat.isDirectory()) {
@@ -50,6 +91,9 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
 
             const fileP = path.join(url, data[0]!.list[num].name);
             res.setHeader("Content-Type", getContentType(fileP));
+            res.setHeader("Accept-Ranges", 'bytes');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
             // res.setHeader("Content-Length", data[0]!.list[num].size);
             const stream = fs.createReadStream(fileP);
             // pipeline(stream, res, err => {
@@ -60,7 +104,15 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
             //         res.status(500).send('传输中断');
             //     }
             // });
-            stream.pipe(res);
+            if (limitRange) {
+
+                const limitStream = getLimitStream({ maxLimit: limitRange, fileStream: stream });
+                stream.pipe(limitStream).pipe(res);
+            }
+            else {
+                stream.pipe(res);
+            }
+
             stream.on('error', (err) => {
                 console.error('读取文件时出错:', err);
             });
@@ -73,12 +125,22 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
             }
             const obj = data[0]!;
             res.setHeader("Content-Type", getContentType(obj.fileList[num].name));
-            res.setHeader("Content-Length", obj.fileList[num].size);
+            res.setHeader("Accept-Ranges", 'bytes');
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+
             const stream = await obj.getFileByIndex(num);
             if (!stream) {
                 return res.send(404);
             }
-            stream.pipe(res);
+            // stream.pipe(res);
+            if (limitRange) {
+
+                const limitStream = getLimitStream({ maxLimit: limitRange, zipStream: stream });
+                stream.pipe(limitStream).pipe(res);
+            }
+            else {
+                stream.pipe(res);
+            }
             stream.on('end', () => {
                 obj.finishStream();
             });

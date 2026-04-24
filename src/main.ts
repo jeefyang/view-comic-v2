@@ -1,21 +1,23 @@
-import './assets/main.css'
+import './assets/main.css';
 
-import { createApp } from 'vue'
-import { createPinia } from 'pinia'
+import { createApp } from 'vue';
+import { createPinia } from 'pinia';
 
-import App from './App.vue'
-import router from './router'
+import App from './App.vue';
+import router from './router';
+import Vue3TouchEvents from "vue3-touch-events";
 
 // 通用字体
-import 'vfonts/Lato.css'
+import 'vfonts/Lato.css';
 // 等宽字体
-import 'vfonts/FiraCode.css'
+import 'vfonts/FiraCode.css';
 import "virtual:uno.css";
 // import naive from 'naive-ui'
 
-const app = createApp(App)
+const app = createApp(App);
 
-app.use(createPinia())
-app.use(router)
+app.use(createPinia());
+app.use(router);
+app.use(Vue3TouchEvents);
 // app.use(naive)
-app.mount('#app')
+app.mount('#app');
