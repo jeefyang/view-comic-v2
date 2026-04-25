@@ -3,7 +3,7 @@
     <div class="reader-container">
         <waterfall :jump="jump" v-if="isInit"></waterfall>
     </div>
-    <float-btn v-model:x="floatBtnX" v-model:y="floatBtnY">
+    <float-btn v-model:x="floatBtnX" v-model:y="floatBtnY" is-right>
         <n-icon size="40">
             <ModeStandbyRound />
         </n-icon>
@@ -24,7 +24,7 @@ const readerStart = ref(0);
 const isInit = ref(false);
 
 const floatBtnX = ref(100);
-const floatBtnY = ref(100);
+const floatBtnY = ref(0);
 
 const jump = ref(0);
 
