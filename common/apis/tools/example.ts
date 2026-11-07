@@ -10,7 +10,6 @@ const ExampleApiUrl = apiUrlsTrans("test/", {
     testTo: { method: "POST", to: {} as { data: string; } }
 });
 
-//@ts-expect-error
 const exampleRouter = new TransExpressRouter(ExampleApiUrl, undefined);
 
 
