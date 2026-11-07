@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from "path";
 import { getComicViewList, getViewFile } from '../utils/view';
 import { resolveInsideRoot } from '../utils/pathSafe';
+import { clearThumbs } from '../utils/thumb';
 
 export function useViewApi(router: Router) {
     const viewRouter = new TransExpressRouter(ViewApiUrl, router);
@@ -141,6 +142,27 @@ export function useViewApi(router: Router) {
             return {
                 code: 500,
                 msg: e
+            };
+        }
+    });
+
+    // 清空缩略图缓存（data/thumbs 下的全部文件）
+    viewRouter.setRouter("clearThumbs", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
+        }
+        try {
+            const count = await clearThumbs();
+            return {
+                code: 200,
+                data: { count }
+            };
+        }
+        catch (e) {
+            return {
+                code: 500,
+                msg: String(e)
             };
         }
     });

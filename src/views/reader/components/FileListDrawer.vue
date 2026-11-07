@@ -23,13 +23,16 @@
                 </n-button>
             </div>
             <div class="fl-list">
-                <n-virtual-list ref="listRef" :items="rows" :item-size="44">
+                <n-virtual-list ref="listRef" :items="rows" :item-size="56">
                     <template #default="{ item }">
                         <div
                             class="fl-item"
                             :class="{ 'is-current': item.no - 1 === current }"
                             @click="onJump(item.no - 1)"
                         >
+                            <div v-if="appFeatures.thumbnails" class="fl-thumb">
+                                <thumb-image :edit-uuid="editUUID" :path="pagePath(item)" :alt="item.name" />
+                            </div>
                             <span class="fl-index">{{ item.no }}</span>
                             <span class="fl-name">{{ item.name }}</span>
                             <span v-if="readerSort.type === 'updateTime'" class="fl-time">{{ formatTime(item.updateTime) }}</span>
@@ -43,6 +46,9 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import ThumbImage from "@/components/ThumbImage.vue";
+import { useViewStore } from "@/stores/view";
+import { appFeatures } from "@/utils/appFeatures";
 import { readerSort, readerSortOptions, toggleReaderSortOrder } from "@/views/reader/readerSort";
 
 const props = withDefaults(
@@ -62,6 +68,16 @@ const emit = defineEmits<{
 }>();
 
 const listRef = ref<any>(null);
+const viewStore = useViewStore();
+
+const editUUID = computed(() => viewStore.curLibrary?.editUUID ?? "");
+const basePath = computed(() => viewStore.comicFileList?.basePath ?? "");
+
+/**
+ * 每页缩略图的路径：目录书就是「目录/文件名」，压缩包书是「xxx.zip/包内条目」，
+ * 服务端两种都能解析（包里那种会在包里按名字找条目）。
+ */
+const pagePath = (item: ComicFileType) => [basePath.value, item.name].filter(Boolean).join("/");
 
 /** 序号自己算：虚拟列表的插槽里拿不到可靠的下标，直接预生成更稳 */
 const rows = computed(() => props.pages.map((item, index) => ({ ...item, no: index + 1 })));
@@ -130,10 +146,19 @@ watch(
     display: flex;
     align-items: center;
     gap: 10px;
-    height: 44px;
+    height: 56px;
     padding: 0 6px;
     border-radius: var(--border-radius, 4px);
     cursor: pointer;
+}
+
+.fl-thumb {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 4px;
+    overflow: hidden;
+    background-color: rgba(127, 127, 127, 0.12);
 }
 
 .fl-item:hover {

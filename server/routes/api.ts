@@ -10,6 +10,7 @@ import { getComicViewList, getComicViewListByFile } from '../utils/view.js';
 import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
 import { resolveInsideRoot } from '../utils/pathSafe.js';
+import { getThumbBuffer, ThumbBusyError } from '../utils/thumb.js';
 import stream from "stream";
 import { Readable } from "stream";
 
@@ -162,9 +163,36 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
 
 });
 
-// 缩略图
-router.get("/Thumbnail/:path", async (req, res) => {
-    res.sendStatus(404);
+// 缩略图（按需生成：命中磁盘直接返回，没命中才解码一次并落盘）
+router.get("/Thumbnail/:editUUID/:width{/*fromPathList}", async (req, res) => {
+    const editUUID = req.params.editUUID;
+    const width = parseInt(String(req.params.width));
+    const rawFromPath = req.params.fromPathList as unknown;
+    const fromPathList: string[] = Array.isArray(rawFromPath)
+        ? rawFromPath.filter((s): s is string => typeof s === 'string')
+        : typeof rawFromPath === 'string' ? [rawFromPath] : [];
+    if (!editUUID || isNaN(width)) {
+        return res.sendStatus(404);
+    }
+
+    try {
+        const buffer = await getThumbBuffer(editUUID, fromPathList.join("/"), width);
+        if (!buffer) {
+            return res.sendStatus(404);
+        }
+        res.setHeader("Content-Type", "image/jpeg");
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.end(buffer);
+    }
+    catch (e) {
+        // 生成队列满了：告诉前端「等会儿再来」，不要当成「这张图没有缩略图」
+        if (e instanceof ThumbBusyError) {
+            res.setHeader("Retry-After", "3");
+            return res.sendStatus(503);
+        }
+        console.error("读取缩略图失败:", e);
+        return res.sendStatus(404);
+    }
 });
 
 // 2. 【关键】在所有路由之后，定义 404 处理中间件
@@ -182,7 +210,5 @@ router.use((req, res) => {
         }
     });
 });
-
-
 
 export default router;

@@ -140,6 +140,14 @@ class MyStreamZip {
     }
 }
 
+/**
+ * 正在打开的压缩包。
+ * 没有这张表时，首次并发访问同一个包会出事：第一个请求把「还没 init 完」的实例
+ * 推进 list，后面的请求立刻命中它，拿到的 fileList 是空的 —— 缩略图会 404、
+ * 阅读页会以为包里没有图片。这里让后来者等同一个 Promise。
+ */
+const opening = new Map<string, Promise<MyStreamZip>>();
+
 export async function getMyStreamZip(p: string, nameEncoding?: string, deleteIndex = 0): Promise<[MyStreamZip | undefined, any]> {
     if (!nameEncoding) {
         nameEncoding = process.env.DEFAULT_ZIPCODE?.trim();
@@ -153,17 +161,31 @@ export async function getMyStreamZip(p: string, nameEncoding?: string, deleteInd
                 return [list[i].stream, undefined];
             }
         }
+        const pending = opening.get(p);
+        if (pending) {
+            return [await pending, undefined];
+        }
         if (list.length >= maxCount) {
             const check = await list[deleteIndex].stream.close();
             if (!check) {
                 return getMyStreamZip(p, nameEncoding, deleteIndex + 1);
             }
             list.shift();
-            return getMyStreamZip(p);
+            return getMyStreamZip(p, nameEncoding);
         }
         const zip = new MyStreamZip(p);
+        const task = (async () => {
+            await zip.init();
+            return zip;
+        })();
+        opening.set(p, task);
+        try {
+            await task;
+        }
+        finally {
+            opening.delete(p);
+        }
         list.push({ p, stream: zip, nameEncoding: nameEncoding });
-        await zip.init();
         return [zip, undefined];
     }
     catch (e) {
