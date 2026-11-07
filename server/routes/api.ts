@@ -9,6 +9,7 @@ import path from "path";
 import { getComicViewList, getComicViewListByFile } from '../utils/view.js';
 import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
+import { resolveInsideRoot } from '../utils/pathSafe.js';
 import stream from "stream";
 import { Readable } from "stream";
 
@@ -62,23 +63,32 @@ const getLimitStream = (o: {
 router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     const editUUID = req.params.editUUID;
     const index = req.params.index;
-    const fromPathList = req.params.fromPathList;
+    // Express 5 的 `*xxx` 通配参数在运行时是「路径片段数组」，
+    // 但类型声明里是 string，这里两种形态都兜住。
+    const rawFromPath = req.params.fromPathList as unknown;
+    const fromPathList: string[] = Array.isArray(rawFromPath)
+        ? rawFromPath.filter((s): s is string => typeof s === 'string')
+        : typeof rawFromPath === 'string' ? [rawFromPath] : [];
     if (!editUUID || !index) {
-        return res.send(404);
+        return res.sendStatus(404);
     }
-    const fromPath = path.join(...fromPathList || []);
 
     const num = parseInt(index);
     if (isNaN(num)) {
-        return res.send(404);
+        return res.sendStatus(404);
     }
     const data = getLibPathByUUID(undefined, editUUID);
     if (data[1]) {
-        return res.send(404);
+        return res.sendStatus(404);
     }
-    const url = path.join(data[0]!, fromPath);
+    // 把片段拼成相对路径后整体解析，确认最终路径仍在书库根目录内。
+    // 否则 `../` 这类片段可以顺着书库根一路读到磁盘上的任意文件。
+    const url = resolveInsideRoot(data[0]!, path.join(...fromPathList));
+    if (!url) {
+        return res.sendStatus(404);
+    }
     if (!fs.existsSync(url)) {
-        res.send(404);
+        return res.sendStatus(404);
     }
     const limitRange = req.headers.range ? parseInt(req.headers.range.split('-')[1]) : 0;
     try {
@@ -86,7 +96,7 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
         if (stat.isDirectory()) {
             const data = getComicViewListByFile([url]);
             if (data[1]) {
-                return res.send(404);
+                return res.sendStatus(404);
             }
 
             const fileP = path.join(url, data[0]!.list[num].name);
@@ -121,7 +131,7 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
         else {
             const data = await getMyStreamZip(url);
             if (data[1]) {
-                return res.send(404);
+                return res.sendStatus(404);
             }
             const obj = data[0]!;
             res.setHeader("Content-Type", getContentType(obj.fileList[num].name));
@@ -130,7 +140,7 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
 
             const stream = await obj.getFileByIndex(num);
             if (!stream) {
-                return res.send(404);
+                return res.sendStatus(404);
             }
             // stream.pipe(res);
             if (limitRange) {
@@ -154,7 +164,7 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
 
 // 缩略图
 router.get("/Thumbnail/:path", async (req, res) => {
-    res.send(404);
+    res.sendStatus(404);
 });
 
 // 2. 【关键】在所有路由之后，定义 404 处理中间件

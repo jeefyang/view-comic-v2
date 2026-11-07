@@ -1,6 +1,9 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
 import { libraryFetch, viewFetch } from '@/utils/jFetch';
+import type { ResSendType } from '@common/apis/tools/apiUrlsTrans';
+import { normalizeBasePath, normalizeFileName } from '@/utils/fileUrl';
+import { sortFileList } from '@common/utils/nameSort';
 
 export const useViewStore = defineStore('view', () => {
     const saveKey = "view";
@@ -17,12 +20,23 @@ export const useViewStore = defineStore('view', () => {
     const shelfScrollName = ref(<string>"");
     const shelfLoading = ref(false);
     const comicFileList = ref({} as ComicFileListType);
+    /**
+     * 当前 shelfPath 属于哪个书库。换书库时要清空书架路径，
+     * 但只认这个持久化的标记，不能用组件里的临时变量——否则从阅读页返回、
+     * 或刷新后重新挂载 shelfView 时会被误判成「换了书库」而回到根目录。
+     */
+    const shelfLibraryUUID = ref(<string>"");
+    /**
+     * 本次会话里「从书架点了具体某一页进阅读」的文件名，**不持久化**。
+     * 刷新后自然为空，这样 reader 才不会拿缓存里的 start 把位置带偏。
+     */
+    const pendingOpenName = ref(<string>"");
 
 
 
     const returnData = {
         curLibrary, shelfPath, shelfSearchKey, shelfSortType, shelfSortValue
-        , shelfIncludeType, shelfScrollName, comicFileList
+        , shelfIncludeType, shelfScrollName, comicFileList, shelfLibraryUUID
     };
 
     const save = () => {
@@ -66,12 +80,35 @@ export const useViewStore = defineStore('view', () => {
         sortShelfFileList();
     };
 
+    /**
+     * 书架的过滤 + 排序：
+     * 1. 按 shelfIncludeType 过滤文件/文件夹；
+     * 2. 按 shelfSearchKey 做文件名子串过滤（不区分大小写）；
+     * 3. 按 shelfSortType + shelfSortValue 排序；
+     * 4. 正序时文件夹在前、文件在后；反序时整个列表倒转，文件夹排到最后。
+     */
     const sortShelfFileList = () => {
         if (!shelfFolder.value) {
             shelfFileList.value = [];
             return;
         }
-        shelfFileList.value = [...shelfFolder.value!.list];
+        let list = shelfFolder.value.list.filter((item) => {
+            if (shelfIncludeType.value == "file") {
+                return !item.isDir;
+            }
+            if (shelfIncludeType.value == "folder") {
+                return item.isDir;
+            }
+            return true;
+        });
+        const key = shelfSearchKey.value.trim().toLowerCase();
+        if (key) {
+            list = list.filter((item) => item.name.toLowerCase().includes(key) || (item.ext || "").toLowerCase().includes(key));
+        }
+        const dirs = sortFileList(list.filter((item) => item.isDir), shelfSortType.value, shelfSortValue.value);
+        const files = sortFileList(list.filter((item) => !item.isDir), shelfSortType.value, shelfSortValue.value);
+        // 正序：文件夹在前；反序：整个列表倒转，文件夹排到最后（同资源管理器里按「反序」排完的样子）
+        shelfFileList.value = shelfSortValue.value == 1 ? [...dirs, ...files] : [...files, ...dirs];
         shelfScrollName.value = "";
         return [...shelfFileList.value];
     };
@@ -116,6 +153,11 @@ export const useViewStore = defineStore('view', () => {
     };
 
     const setLibrary = (item: JsonLibrary) => {
+        // 换了书库，之前记的书架路径对它没意义
+        if (curLibrary.value?.uuid != item.uuid) {
+            shelfPath.value = [];
+        }
+        shelfLibraryUUID.value = item.uuid;
         curLibrary.value = item;
         save();
     };
@@ -126,15 +168,68 @@ export const useViewStore = defineStore('view', () => {
         return index == -1 ? 0 : index;
     };
 
-    const updateComicViewList = async (f: ViewFileType) => {
-        const res = await viewFetch.request("comicViewList", { editUUID: curLibrary.value.editUUID!, path: shelfPath.value.join('/'), file: f });
+    /**
+     * 服务端返回的 comicViewList 不含图片宽高（只有 name/size/index）。
+     * 宽高是 reader 里图片加载后按需写进 store 并持久化的，用于计算每页占位高度和阅读进度定位。
+     * 重新拉取同一个列表时必须按文件名把已缓存的宽高合并回来，否则占位高度会退回按屏幕估算，
+     * 导致刷新后跳回的位置偏移。换了书（basePath 或 baseFile 不同）则不合并。
+     */
+    const mergeCachedSize = (oldList: Partial<ComicFileListType> | undefined, nextList: ComicFileListType) => {
+        const oldItems = oldList?.list;
+        if (!oldItems?.length || !nextList?.list?.length) return nextList;
+        if (oldList?.basePath !== nextList.basePath) return nextList;
+        if (oldList?.baseFile?.name !== nextList.baseFile?.name) return nextList;
+
+        const sizeMap = new Map<string, ComicFileType>();
+        for (const item of oldItems) {
+            if (item.width && item.height) sizeMap.set(item.name, item);
+        }
+        if (!sizeMap.size) return nextList;
+
+        nextList.list = nextList.list.map((item) => {
+            const prev = sizeMap.get(item.name);
+            if (!prev) return item;
+            return { ...item, width: prev.width, height: prev.height };
+        });
+        return nextList;
+    };
+
+    const updateComicViewList = async (f: ViewFileType, path = shelfPath.value.join('/')) => {
+        const res = await viewFetch.request("comicViewList", { editUUID: curLibrary.value.editUUID!, path, file: f });
         if (res.code != 200) {
             return res;
         }
         const data = res.data!;
-        comicFileList.value = data;
+        // 书库根目录下的书，服务端会给 basePath="."、baseFile.name="."，归一成空串再存，
+        // 否则取图地址会拼出 `.../<index>/.`，也会污染阅读进度的 key。
+        data.basePath = normalizeBasePath(data.basePath);
+        if (data.baseFile) {
+            data.baseFile = { ...data.baseFile, name: normalizeFileName(data.baseFile.name) };
+        }
+        const merged = mergeCachedSize(comicFileList.value, data);
+        comicFileList.value = merged;
         save()
         return res;
+    };
+
+    /**
+     * 用缓存里的书重新校验一次：压缩包被删/目录不存在时服务端返回非 200。
+     * 供 reader 入口守卫使用，返回 404 时调用方应回首页。
+     */
+    const reloadComicViewList = async (): Promise<ResSendType<ComicFileListType>> => {
+        const list = comicFileList.value;
+        if (!curLibrary.value.editUUID || !list?.baseFile) {
+            return { code: 404, msg: "资源不存在" };
+        }
+        /**
+         * basePath 存的是「这本书的完整相对路径」：
+         * 压缩包是 `img.zip`、`sub/img.zip`，目录漫画是 `a/b`（书就是这个目录本身）。
+         * 服务端要的是「所在目录 + 文件名」，所以统一拆成父路径 + 最后一段，
+         * 否则压缩包会拼成 `img.zip/img.zip`、嵌套目录会拼成 `a/b/b`，都会 404。
+         */
+        const segments = (list.basePath || "").split(/[\\/]+/).filter(Boolean);
+        const name = segments.pop() ?? "";
+        return await updateComicViewList({ ...list.baseFile, name }, segments.join("/"));
     };
 
 
@@ -155,6 +250,8 @@ export const useViewStore = defineStore('view', () => {
         shelfLoading,
         libraryList, updateLibraryList,
         updateLibrary, removeLibrary,
-        updateComicViewList
+        updateComicViewList,
+        reloadComicViewList,
+        pendingOpenName
     };
 });

@@ -23,16 +23,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, watch } from "vue";
 import { useDark } from "@vueuse/core";
 import { darkTheme, darkTheme as darkThemePreset } from "naive-ui";
 import AppBottomNav from "@/components/AppBottomNav.vue";
 import { useConfigStore } from "./stores/config";
 import XLogin from "./components/XLogin.vue";
+import router from "@/router";
 import { configFetch, libraryFetch, userFetch, viewFetch } from "./utils/jFetch";
 import type { ResSendType } from "@common/apis/tools/apiUrlsTrans";
 
 const configStore = useConfigStore();
+
+/**
+ * 401 只弹一次登录框：
+ * reader 一屏可能并发几十个 /api/file 请求，全部 401 时会把弹窗反复顶开，
+ * 这个标志保证同一轮失效只提示一次，登录成功后自动复位。
+ */
+let loginPrompted = false;
 
 // 响应式暗色主题（可选）
 const isDark = useDark();
@@ -59,13 +67,25 @@ onMounted(async () => {
     item.addListener("afterFetch", async (key: string, res: ResSendType<any> | undefined) => {
         if (res?.code == 401) {
             console.warn("请登录");
-            const configStore = useConfigStore();
             configStore.token = "";
             configStore.save();
-            configStore.showLogin = true;
+            if (!loginPrompted) {
+                loginPrompted = true;
+                configStore.showLogin = true;
+            }
+            // 登录失效后数据页没有任何可展示内容，统一回首页兜底
+            if (router.currentRoute.value.path !== "/library") {
+                router.replace({ path: "/library" });
+            }
         }
         return;
     });
+});
+// 重新登录成功后复位，下次再失效还能提示一次
+watch(() => configStore.token, (token) => {
+    if (token) {
+        loginPrompted = false;
+    }
 });
 await configStore.initConfig()
 configStore.isInit = true;

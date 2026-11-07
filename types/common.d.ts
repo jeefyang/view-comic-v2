@@ -84,6 +84,17 @@ type UserConfigType = {
     userUUID: string;
     padding?: number;
     pageMargin?: number;
+    /** 用户上传的点击区域布局，key 为唯一名称，同名覆盖 */
+    tapZoneLayouts?: Record<string, UserTapZoneItemType[]>;
+};
+
+/** 点击区域布局的存储形态（与前端 TapZone 结构一致，坐标 0~1） */
+type UserTapZoneItemType = {
+    id: string;
+    action: string;
+    rect: { x: number; y: number; width: number; height: number; };
+    /** action 为 setFitMode 时生效 */
+    fitMode?: string;
 };
 
 type EditLibraryType = {
@@ -143,4 +154,14 @@ type WaterfallPageType = {
     prelodDom?: HTMLElement;
     /** 排序后的位置 */
     sortIndex: number;
+    /**
+     * 这一屏属于「排序后第几张图」（0 基）。
+     * 与 sortIndex 的区别：双开页一张图占两屏，两屏的 order 相同、sortIndex 不同。
+     */
+    order?: number;
+    /**
+     * 双开页被拆成两屏时，这是第几屏：
+     * 0 = 左半，1 = 右半；不分割的页没有这个字段。
+     */
+    half?: 0 | 1;
 } & ComicFileType;

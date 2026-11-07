@@ -1,0 +1,48 @@
+{
+    "version": 2,
+    "presets": [
+        {
+            "id": "vertical3",
+            "name": "竖三分（左右翻页 · 中间按钮）",
+            "zones": [
+                { "id": "vertical3-0", "action": "setPrev", "rect": { "x": 0, "y": 0, "width": 0.35, "height": 1 } },
+                { "id": "vertical3-1", "action": "toggleUI", "rect": { "x": 0.35, "y": 0, "width": 0.3, "height": 1 } },
+                { "id": "vertical3-2", "action": "setNext", "rect": { "x": 0.65, "y": 0, "width": 0.35, "height": 1 } }
+            ]
+        },
+        {
+            "id": "horizontal3",
+            "name": "横三分（上下翻页 · 中间按钮）",
+            "zones": [
+                { "id": "horizontal3-0", "action": "setPrev", "rect": { "x": 0, "y": 0, "width": 1, "height": 0.35 } },
+                { "id": "horizontal3-1", "action": "toggleUI", "rect": { "x": 0, "y": 0.35, "width": 1, "height": 0.3 } },
+                { "id": "horizontal3-2", "action": "setNext", "rect": { "x": 0, "y": 0.65, "width": 1, "height": 0.35 } }
+            ]
+        },
+        {
+            "id": "twoColumns",
+            "name": "左右两栏（各占一半）",
+            "zones": [
+                { "id": "twoColumns-0", "action": "setPrev", "rect": { "x": 0, "y": 0, "width": 0.5, "height": 1 } },
+                { "id": "twoColumns-1", "action": "setNext", "rect": { "x": 0.5, "y": 0, "width": 0.5, "height": 1 } }
+            ]
+        },
+        {
+            "id": "twoRows",
+            "name": "上下两栏（各占一半）",
+            "zones": [
+                { "id": "twoRows-0", "action": "setPrev", "rect": { "x": 0, "y": 0, "width": 1, "height": 0.5 } },
+                { "id": "twoRows-1", "action": "setNext", "rect": { "x": 0, "y": 0.5, "width": 1, "height": 0.5 } }
+            ]
+        },
+        {
+            "id": "wideCenter",
+            "name": "两侧窄翻页 · 中间宽按钮",
+            "zones": [
+                { "id": "wideCenter-0", "action": "setPrev", "rect": { "x": 0, "y": 0, "width": 0.25, "height": 1 } },
+                { "id": "wideCenter-1", "action": "toggleUI", "rect": { "x": 0.25, "y": 0, "width": 0.5, "height": 1 } },
+                { "id": "wideCenter-2", "action": "setNext", "rect": { "x": 0.75, "y": 0, "width": 0.25, "height": 1 } }
+            ]
+        }
+    ]
+}

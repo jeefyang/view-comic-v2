@@ -6,6 +6,7 @@ import { getLibPathByUUID } from '../utils/library';
 import fs from 'fs';
 import path from "path";
 import { getComicViewList, getViewFile } from '../utils/view';
+import { resolveInsideRoot } from '../utils/pathSafe';
 
 export function useViewApi(router: Router) {
     const viewRouter = new TransExpressRouter(ViewApiUrl, router);
@@ -28,8 +29,8 @@ export function useViewApi(router: Router) {
                 msg: data[1]
             };
         }
-        const url = path.join(data[0]!, from.path || "");
-        if (!fs.existsSync(url)) {
+        const url = resolveInsideRoot(data[0]!, from.path || "");
+        if (!url || !fs.existsSync(url)) {
             return {
                 code: 404,
                 data: false,
@@ -62,8 +63,8 @@ export function useViewApi(router: Router) {
         }
 
         try {
-            const url = path.join(data[0]!, from.path || "");
-            if (!fs.existsSync(url)) {
+            const url = resolveInsideRoot(data[0]!, from.path || "");
+            if (!url || !fs.existsSync(url)) {
                 return {
                     code: 404,
                     msg: "路径不存在"
@@ -116,8 +117,9 @@ export function useViewApi(router: Router) {
         }
 
         try {
-            const url = path.join(data[0]!, from.path || "");
-            if (!fs.existsSync(url) || !fs.existsSync(path.join(url, from.file.name))) {
+            const url = resolveInsideRoot(data[0]!, from.path || "");
+            const filePath = url ? resolveInsideRoot(url, from.file.name) : null;
+            if (!url || !filePath || !fs.existsSync(url) || !fs.existsSync(filePath)) {
                 return {
                     code: 404,
                     msg: "路径不存在"

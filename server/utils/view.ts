@@ -55,10 +55,19 @@ export function getComicViewListByFile(urls: string[]): [ComicFileListType | und
         }
         len = list.push({ ...f, index: len });
     }
+    // baseFile 一直用「拼上书库根的绝对路径」去读：以前这里用的是相对路径，
+    // 只有正巧是 "."（工作目录）时才能 stat 到，子目录里的书会直接抛 ENOENT 变成 500。
+    const relBase = urls.length == 1 ? dir : path.join(...[...urls].slice(1, isDir ? undefined : -1));
+    const absBase = urls.length == 1 ? dir : path.join(urls[0]!, relBase);
+    const baseFile = getViewFile(absBase)!;
+    // 书库根目录下的书：保持原来的 "." 名字，避免改动阅读进度的 key
+    if (urls.length > 1 && relBase === ".") {
+        baseFile.name = ".";
+    }
     return [{
-        baseFile: urls.length == 1 ? getViewFile(dir)! : getViewFile(path.join(...[...urls].slice(1, isDir ? undefined : -1)))!,
+        baseFile,
         start,
-        basePath: urls.length == 1 ? dir : path.join(...[...urls].slice(1, isDir ? undefined : -1)),
+        basePath: urls.length == 1 ? dir : relBase,
         list
     }, undefined];
 

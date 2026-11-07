@@ -1,84 +1,145 @@
 <template>
     <div class="parent">
-        <div class="user ml-3 mb-2" :style="{ color: themeVars.primaryColor }">{{ configStore.username || "无用户" }}{{ configStore.username ? `(${configStore.userType})` : "" }}</div>
-        <n-flex vertical style="gap: 10px">
-            <XBlockButton class="btn" v-if="configStore.isLogin" @click="showEditUser = true">修改用户名/密码</XBlockButton>
-            <XBlockButton class="btn" v-if="configStore.isLogin && configStore.userType == 'admin'" @click="showAddUser = true">添加用户</XBlockButton>
-            <XBlockButton class="btn" v-if="configStore.isLogin && configStore.userType == 'admin'" @click="showUserList = true">用户列表</XBlockButton>
-
-            <XBlockButton class="btn">清除缩略图缓存</XBlockButton>
-            <XBlockButton class="btn">清除历史记录</XBlockButton>
-            <XBlockButton class="btn">清除书签记录</XBlockButton>
-            <XBlockButton class="btn" @click="handleClearCache">清除当前客户端缓存</XBlockButton>
-            <XBlockButton class="btn" @click="handleTransUser">切换账号</XBlockButton>
-
-            <XBlockButton class="btn" @click="handleLogout">退出登录</XBlockButton>
-        </n-flex>
-        <ModalEditUser v-model:show="showEditUser"></ModalEditUser>
-        <ModalAddUser v-model:show="showAddUser"></ModalAddUser>
-        <ModalUserList v-model:show="showUserList"></ModalUserList>
+        <div v-if="readingNow" class="current">
+            <div class="current-title">正在阅读</div>
+            <div class="current-path">{{ readingNow.path }}</div>
+            <div class="current-file">{{ readingNow.file }}</div>
+        </div>
+        <n-tabs v-model:value="tab" type="line" animated class="tabs" justify-content="space-evenly" pane-class="tab-pane">
+            <n-tab-pane name="reader" tab="阅读">
+                <settings-reader />
+            </n-tab-pane>
+            <n-tab-pane v-if="!isWaterfall" name="paged" tab="翻页">
+                <settings-paged />
+            </n-tab-pane>
+            <n-tab-pane name="account" tab="账号">
+                <settings-account />
+            </n-tab-pane>
+            <n-tab-pane name="data" tab="数据">
+                <settings-data />
+            </n-tab-pane>
+        </n-tabs>
     </div>
 </template>
+
 <script lang="ts" setup>
-import { onActivated, onMounted, ref } from "vue";
-import XBlockButton from "@/components/XBlockButton.vue";
-import { useDialog, useThemeVars } from "naive-ui";
-import { useConfigStore } from "@/stores/config";
-import ModalEditUser from "./components/ModalEditUser.vue";
-import ModalAddUser from "./components/ModalAddUser.vue";
-import ModalUserList from "./components/ModalUserList.vue";
+import { defineAsyncComponent, computed, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useViewStore } from "@/stores/view";
+import { readerSettings } from "@/views/reader/readerSettings";
 
-const dialog = useDialog();
-const themeVars = useThemeVars();
-const configStore = useConfigStore();
+const SettingsReader = defineAsyncComponent(() => import("./tabs/SettingsReader.vue"));
+const SettingsPaged = defineAsyncComponent(() => import("./tabs/SettingsPaged.vue"));
+const SettingsAccount = defineAsyncComponent(() => import("./tabs/SettingsAccount.vue"));
+const SettingsData = defineAsyncComponent(() => import("./tabs/SettingsData.vue"));
 
-const showEditUser = ref(false);
-const showUserList = ref(false);
-const showAddUser = ref(false);
+type TabKey = "reader" | "paged" | "account" | "data";
 
-const handleClearCache = () => {
-    dialog.warning({
-        title: "提示",
-        content: `确定要清除客户端缓存吗？(将会触发刷新页面)`,
-        positiveText: "确定",
-        negativeText: "取消",
-        onPositiveClick: () => {
-            configStore.clear();
-            dialog.success({
-                closable: false,
-                maskClosable: false,
-                title: "提示",
-                content: `清除客户端缓存成功,将强制刷新页面`,
-                positiveText: "刷新",
-                onPositiveClick: () => {
-                    window.location.reload();
-                }
-            });
+const TAB_STORAGE_KEY = "settingsTab";
+const tabKeys: TabKey[] = ["reader", "paged", "account", "data"];
+
+const isTabKey = (value: any): value is TabKey => tabKeys.includes(value);
+
+const route = useRoute();
+const router = useRouter();
+const viewStore = useViewStore();
+
+/** 设置页顶部显示「当前在读哪本书」：书库 / 书架路径 / 文件名，没有就整块隐藏 */
+const readingNow = computed(() => {
+    const file = viewStore.comicFileList?.baseFile;
+    if (!file) {
+        return null;
+    }
+    const segments: string[] = [];
+    if (viewStore.curLibrary?.name) {
+        segments.push(viewStore.curLibrary.name);
+    }
+    segments.push(...(viewStore.shelfPath || []));
+    if (viewStore.comicFileList?.basePath) {
+        segments.push(viewStore.comicFileList.basePath);
+    }
+    const path = segments.filter(Boolean).join(" / ") || "根目录";
+    return { path, file: file.name || "" };
+});
+
+const readInitialTab = (): TabKey => {
+    const fromQuery = route.query.tab;
+    if (typeof fromQuery === "string" && isTabKey(fromQuery)) {
+        return fromQuery;
+    }
+    try {
+        const saved = localStorage.getItem(TAB_STORAGE_KEY);
+        if (saved && isTabKey(saved)) {
+            return saved;
         }
-    });
+    } catch {
+        // ignore
+    }
+    return "reader";
 };
 
-const handleTransUser = () => {
-    configStore.showLogin = true;
-};
+const tab = ref<TabKey>(readInitialTab());
 
-const handleLogout = () => {
-    configStore.toLogout();
-};
+/** 瀑布流用不到「翻页」这一页，直接隐藏；停在翻页页时自动退回阅读页 */
+const isWaterfall = computed(() => readerSettings.mode === "waterfall");
 
-onActivated(async () => {
-    if (!configStore.isLogin) {
-        configStore.showLogin = true;
+watch(isWaterfall, value => {
+    if (value && tab.value === "paged") {
+        tab.value = "reader";
+    }
+});
+
+if (isWaterfall.value && tab.value === "paged") {
+    tab.value = "reader";
+}
+
+watch(tab, value => {
+    try {
+        localStorage.setItem(TAB_STORAGE_KEY, value);
+    } catch {
+        // ignore
+    }
+    if (route.query.tab !== value) {
+        void router.replace({ query: { ...route.query, tab: value } });
     }
 });
 </script>
+
 <style scoped lang="scss">
 .parent {
-    .user {
-        font-size: x-large;
+    padding-bottom: 24px;
+
+    .tabs {
+        padding: 0 8px;
     }
-    .btn {
-        font-size: large;
+
+    :deep(.tab-pane) {
+        padding: 12px 4px;
+    }
+}
+
+.current {
+    margin: 8px 10px 4px;
+    padding: 10px 12px;
+    border-radius: var(--border-radius);
+    background-color: var(--divider-color);
+
+    .current-title {
+        font-size: 12px;
+        opacity: 0.55;
+        margin-bottom: 4px;
+    }
+
+    .current-path {
+        font-size: 13px;
+        opacity: 0.8;
+        word-break: break-all;
+    }
+
+    .current-file {
+        font-size: 15px;
+        margin-top: 2px;
+        word-break: break-all;
     }
 }
 </style>

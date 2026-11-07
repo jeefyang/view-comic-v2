@@ -55,6 +55,8 @@ const toClick = async (item: ViewFileType) => {
             msg.error(res.msg);
             return;
         }
+        // 记下「这次点的是哪一页」，reader 打开时按名字定位；不落盘，刷新后自动失效
+        viewStore.pendingOpenName = item.name;
         router.push({ path: "/reader" });
         return;
     }
