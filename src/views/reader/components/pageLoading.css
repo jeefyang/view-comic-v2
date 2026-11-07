@@ -1,0 +1,78 @@
+/* 阅读页的图片加载占位样式。
+   瀑布流的页面是命令式创建的 DOM，拿不到 scoped 的 data-v 属性，
+   所以这份样式做成全局文件，由 PageLoading.vue 与 Waterfall.vue 共用。 */
+
+.page-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background-color: rgba(0, 0, 0, 0.18);
+    /* 覆盖在图片上方，但不吃滚动 / 拖动事件 */
+    pointer-events: none;
+    /* 瀑布流里占位层先于 <img> 挂进容器，靠 z-index 压在上面 */
+    z-index: 2;
+    transition: opacity 0.2s ease;
+}
+
+.page-loading.is-static {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    height: 100%;
+    background-color: transparent;
+}
+
+.page-loading__spinner {
+    width: 28px;
+    height: 28px;
+    border: 2px solid rgba(255, 255, 255, 0.28);
+    border-top-color: rgba(255, 255, 255, 0.92);
+    border-radius: 50%;
+    animation: page-loading-spin 0.9s linear infinite;
+}
+
+.page-loading__text {
+    padding: 0 12px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 12px;
+    line-height: 18px;
+    text-align: center;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+}
+
+/* 慢网提示：文字更明显一点 */
+.page-loading.is-slow .page-loading__text {
+    color: rgba(255, 255, 255, 0.92);
+}
+
+/* 失败态：隐藏转圈，露出可点击的提示 */
+.page-loading.is-failed {
+    pointer-events: auto;
+    cursor: pointer;
+    background-color: rgba(0, 0, 0, 0.32);
+}
+
+.page-loading.is-failed .page-loading__spinner {
+    display: none;
+}
+
+.page-loading.is-failed .page-loading__text {
+    padding: 6px 14px;
+    border-radius: 999px;
+    background-color: rgba(0, 0, 0, 0.45);
+    color: rgba(255, 255, 255, 0.92);
+}
+
+@keyframes page-loading-spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}

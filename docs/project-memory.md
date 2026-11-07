@@ -44,6 +44,12 @@
 统一走 `src/utils/fileUrl.ts` 的 `buildFileUrl(editUUID, index, basePath)`，不要手拼 `api/file/...`。
 `basePath` 必须经 `normalizeBasePath()`：服务端 Windows 的 `path.join` 会给反斜杠，根目录会给 `"."`。
 
+### 图片加载占位与慢网降级
+- 组件：`src/views/reader/components/PageLoading.vue`（转圈 + 文案，`failed` 时 emit `retry`）；样式是**全局**的 `pageLoading.css`，因为瀑布流的页面容器是命令式创建的，拿不到 scoped 的 `data-v`。
+- 两个模式都有：`onload` 前图片透明（`opacity: 0` + 0.2s 过渡），占位层淡出移除；超过 3 秒文案切「网络较慢，仍在加载…」；失败自动重试 2 次（800ms / 2000ms，URL 追加 `?retry=` 避开失败缓存），仍失败显示「加载失败 · 点击重试」。
+- 占位层要 `z-index: 2`：瀑布流里它先于 `<img>` 挂进容器，不压一层会被图片盖住；容器必须 `position: relative`。
+- 慢网判定：`src/utils/network.ts` 的 `slowNetwork`（Network Information API，`slow-2g/2g/3g`；Safari / Firefox 没有该 API，一律按不慢处理）。慢网时瀑布流预加载 5→3、驻留 8→5、**不再发 `decodeSize`**（省一个 64KB Range 连接），单页预加载 5→2。
+
 ### 缩略图
 - 地址：`/api/Thumbnail/{editUUID}/{width}/{相对路径}`，路径里可以带压缩包内条目（`img.zip/0001.jpg`），由 `server/utils/thumb.ts` 的 `splitZipEntry()` 拆。
 - 生成：`getThumbBuffer()` 命中磁盘直接读，否则按类型取源图（目录取自然序首图、图片取自身、压缩包取包内第一张图），sharp 按宽度等比缩放成 jpeg，落 `data/thumbs/{thumbId}_{width}.jpg`（`thumbId = sha1(库名 + \0 + 相对路径).slice(0,20)`）。
@@ -68,6 +74,7 @@
 ## 已实现的功能面
 
 - 阅读器：瀑布流 / 单页翻页两种模式；自适应 / 宽度 / 高度 / 旋转四种适配（宽度与高度适应可拖动看超出部分）；双开页自动两屏（顺序随翻页方向）；页码指示、文件名栏、点击页码跳页、文件列表抽屉（三种排序 + 正反序）
+- 加载体验：每页加载占位（转圈 / 慢网提示 / 失败点击重试，自动重试 2 次）；慢网（2G/3G）自动降低预加载与并发
 - 点击区域：可拖拽 / 八向改大小 / 2% 吸附；动作含翻页、切 UI、设置、跳页、返回书架 / 书库、切换适配方式；预设布局；布局上传到个人账户（`userConfig.tapZoneLayouts`，同名覆盖）
 - 设置页：阅读 / 翻页 / 账号 / 数据四个标签；阅读设置另有半屏抽屉
 - 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先

@@ -3,27 +3,38 @@
         <div class="page-box">
             <div v-if="page && pageUrl && isSpread" :key="`${pageUrl}-spread`" class="spread-box" :style="spreadBoxStyle">
                 <img
-                    :src="pageUrl"
+                    :src="displayUrl"
                     class="page-img spread-img"
+                    :class="{ 'is-loading': loading }"
                     :style="spreadImgStyle"
                     alt=""
                     decoding="async"
                     draggable="false"
                     @load="onImgLoad"
+                    @error="onImgError"
                 />
             </div>
             <img
                 v-else-if="page && pageUrl"
                 :key="pageUrl"
-                :src="pageUrl"
+                :src="displayUrl"
                 class="page-img"
+                :class="{ 'is-loading': loading }"
                 :style="imgStyle"
                 alt=""
                 decoding="async"
                 draggable="false"
                 @load="onImgLoad"
+                @error="onImgError"
             />
             <div v-else class="page-empty">没有可显示的页面</div>
+            <page-loading
+                v-if="page && pageUrl && (loading || failed)"
+                :slow="slow"
+                :failed="failed"
+                :text="loadText"
+                @retry="onRetry"
+            />
         </div>
         <tap-zone-layer :zones="tapZones" :pannable="pannable" @action="onZoneAction" @pan="onPan" />
     </div>
@@ -38,10 +49,17 @@ import type { ReaderModeHandle } from "@/views/reader/modes/types";
 import { computeFit } from "@/views/reader/modes/fitStrategies";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
+import { slowNetwork } from "@/utils/network";
 import { loadTapZones, tapZones } from "@/views/reader/tapZones/useTapZones";
 import type { TapActionKey } from "@/views/reader/tapZones/actions";
 import type { TapZone } from "@/views/reader/tapZones/types";
 import TapZoneLayer from "@/views/reader/components/TapZoneLayer.vue";
+import PageLoading from "@/views/reader/components/PageLoading.vue";
+
+/** 加载超过这个时间还没完成，就把提示换成「网络较慢」 */
+const SLOW_HINT_DELAY = 3000;
+/** 失败后的自动重试间隔（毫秒），次数即数组长度 */
+const RETRY_DELAYS = [800, 2000];
 
 const props = defineProps<{ jump: number }>();
 
@@ -81,6 +99,71 @@ const urlOf = (target: typeof page.value) => {
 };
 
 const pageUrl = computed(() => urlOf(page.value));
+
+/* ---------- 加载态：慢网提示 + 失败自动重试 ---------- */
+const loading = ref(true);
+const failed = ref(false);
+const slow = ref(false);
+const retrying = ref(false);
+/** 换个值就重新请求同一页（重试时用，避免浏览器复用失败结果） */
+const retryToken = ref(0);
+let attempt = 0;
+let hintTimer: ReturnType<typeof setTimeout> | undefined;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+const displayUrl = computed(() => {
+    const base = pageUrl.value;
+    if (!base || !retryToken.value) {
+        return base;
+    }
+    return `${base}${base.includes("?") ? "&" : "?"}retry=${retryToken.value}`;
+});
+
+const loadText = computed(() => (retrying.value ? "加载失败，正在重试…" : ""));
+
+const clearLoadTimers = () => {
+    if (hintTimer) {
+        clearTimeout(hintTimer);
+        hintTimer = undefined;
+    }
+    if (retryTimer) {
+        clearTimeout(retryTimer);
+        retryTimer = undefined;
+    }
+};
+
+/** 3 秒还没加载完就切成慢网文案 */
+const startSlowHint = () => {
+    slow.value = slowNetwork.value;
+    hintTimer = setTimeout(() => {
+        if (loading.value) {
+            slow.value = true;
+        }
+    }, SLOW_HINT_DELAY);
+};
+
+const resetLoadState = () => {
+    clearLoadTimers();
+    loading.value = true;
+    failed.value = false;
+    retrying.value = false;
+    attempt = 0;
+    // 换页后重试计数与 token 都归零，别把 ?retry= 带到别的页
+    retryToken.value = 0;
+    startSlowHint();
+};
+
+const onRetry = () => {
+    if (!pageUrl.value) {
+        return;
+    }
+    failed.value = false;
+    loading.value = true;
+    retrying.value = false;
+    attempt = 0;
+    retryToken.value = Date.now();
+    startSlowHint();
+};
 
 const sizeKey = (target: typeof page.value) => (target ? String(target.index) : "");
 
@@ -203,6 +286,8 @@ const imgStyle = computed(() => {
 /** 已预热的图片，用 src 占位即可让浏览器缓存住 */
 const preloaded = new Map<string, HTMLImageElement>();
 const MAX_PRELOAD = 5;
+/** 慢网时只预热前后各一张，别跟当前页抢带宽 */
+const maxPreload = () => (slowNetwork.value ? 2 : MAX_PRELOAD);
 
 const ensureSize = (target: typeof page.value) => {
     const key = sizeKey(target);
@@ -252,7 +337,7 @@ const preloadNearby = () => {
         img.src = url;
         preloaded.set(url, img);
         ensureSize(target);
-        while (preloaded.size > MAX_PRELOAD) {
+        while (preloaded.size > maxPreload()) {
             releasePreloaded();
         }
     }
@@ -343,6 +428,11 @@ const onZoneAction = (zone: TapZone) => {
 
 const onImgLoad = (e: Event) => {
     const el = e.target as HTMLImageElement;
+    clearLoadTimers();
+    loading.value = false;
+    failed.value = false;
+    retrying.value = false;
+    slow.value = false;
     const current = page.value;
     if (!current || sizeMap[sizeKey(current)]) {
         return;
@@ -351,6 +441,27 @@ const onImgLoad = (e: Event) => {
         sizeMap[sizeKey(current)] = { width: el.naturalWidth, height: el.naturalHeight };
     }
 };
+
+const onImgError = () => {
+    if (attempt < RETRY_DELAYS.length) {
+        const delay = RETRY_DELAYS[attempt]!;
+        attempt += 1;
+        retrying.value = true;
+        retryTimer = setTimeout(() => {
+            // 换个 token 重新设 src，等于重试这一页
+            retryToken.value = Date.now();
+        }, delay);
+        return;
+    }
+    // 自动重试用尽，交给占位层显示「点击重试」
+    clearLoadTimers();
+    loading.value = false;
+    failed.value = true;
+    retrying.value = false;
+};
+
+// 换页时重置加载态
+watch(pageUrl, () => resetLoadState(), { immediate: true });
 
 const onKeydown = (e: KeyboardEvent) => {
     // 翻页方向只管双开页的左右先后，不影响「下一页」的方向键语义
@@ -395,6 +506,7 @@ onDeactivated(() => {
 onBeforeUnmount(() => {
     resizeObserver?.disconnect();
     resizeObserver = undefined;
+    clearLoadTimers();
     window.removeEventListener("keydown", onKeydown);
     for (const img of preloaded.values()) {
         img.src = "";
@@ -414,6 +526,7 @@ onBeforeUnmount(() => {
 }
 
 .page-box {
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -428,6 +541,12 @@ onBeforeUnmount(() => {
     user-select: none;
     -webkit-user-drag: none;
     will-change: transform;
+    transition: opacity 0.2s ease;
+}
+
+/* 图片还没解码出来时先透明，避免闪半张图 */
+.page-img.is-loading {
+    opacity: 0;
 }
 
 /* 图片比视口大时提示可以拖动 */

@@ -8,6 +8,8 @@ import { readerSettings } from "@/views/reader/readerSettings";
 import { readerPages } from "@/views/reader/readerPages";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
+import { slowNetwork } from "@/utils/network";
+import "@/views/reader/components/pageLoading.css";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 const viewStore = useViewStore();
@@ -46,6 +48,14 @@ const preloadPageCount = 5;
 /** 预加载屏幕数量 */
 const preloadScreenCount = 3;
 
+/** 慢网时少占几个并发连接：预加载页数与同时驻留的图片都调小 */
+const slowPreloadPageCount = 3;
+const slowMaxDisplayPageCount = 5;
+/** 加载超过这个时间还没完成，就把提示换成「网络较慢」 */
+const SLOW_HINT_DELAY = 3000;
+/** 失败后的自动重试间隔（毫秒），次数即数组长度 */
+const RETRY_DELAYS = [800, 2000];
+
 let curTopDiv: HTMLDivElement;
 let curTopHeight = 0;
 let curContentDiv: HTMLDivElement;
@@ -63,6 +73,109 @@ const sizeAbortMap = new WeakMap<WaterfallPageType, AbortController>();
 const resolvedPages = new WeakSet<WaterfallPageType>();
 /** 已从 DOM 移除的容器，用来忽略移除后迟到的 onload/error（清 src 会触发 error） */
 const droppedDivs = new WeakSet<HTMLElement>();
+/** 占位层用到的定时器，页被回收时一起清掉 */
+const pageTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>[]>();
+
+const trackTimer = (div: HTMLElement, timer: ReturnType<typeof setTimeout>) => {
+    const list = pageTimers.get(div);
+    if (list) {
+        list.push(timer);
+    } else {
+        pageTimers.set(div, [timer]);
+    }
+};
+
+const clearPageTimers = (div: HTMLElement) => {
+    pageTimers.get(div)?.forEach((timer) => clearTimeout(timer));
+    pageTimers.delete(div);
+};
+
+/** 重试时换个 query，避免浏览器复用上一次失败的结果 */
+const retryUrl = (url: string, attempt: number) => `${url}${url.includes("?") ? "&" : "?"}retry=${attempt}`;
+
+interface PagePlaceholder {
+    onLoad: () => void;
+    onFail: () => void;
+}
+
+/**
+ * 图片加载期间的占位层：转圈 + 文案。
+ * 瀑布流的 DOM 是命令式创建的，用不了 SFC，样式来自 pageLoading.css（全局）。
+ */
+const createPagePlaceholder = (div: HTMLDivElement, img: HTMLImageElement, page: WaterfallPageType): PagePlaceholder => {
+    const wrap = document.createElement("div");
+    wrap.className = "page-loading";
+    const spinner = document.createElement("span");
+    spinner.className = "page-loading__spinner";
+    const text = document.createElement("span");
+    text.className = "page-loading__text";
+    text.textContent = "加载中";
+    wrap.append(spinner, text);
+    div.appendChild(wrap);
+
+    const showSlow = () => {
+        if (!wrap.isConnected) {
+            return;
+        }
+        wrap.classList.add("is-slow");
+        text.textContent = "网络较慢，仍在加载…";
+    };
+    if (slowNetwork.value) {
+        showSlow();
+    } else {
+        trackTimer(div, setTimeout(showSlow, SLOW_HINT_DELAY));
+    }
+
+    let attempt = 0;
+
+    const onFail = () => {
+        if (droppedDivs.has(div)) {
+            return;
+        }
+        if (attempt < RETRY_DELAYS.length) {
+            const delay = RETRY_DELAYS[attempt]!;
+            attempt += 1;
+            text.textContent = "加载失败，正在重试…";
+            trackTimer(
+                div,
+                setTimeout(() => {
+                    if (droppedDivs.has(div)) {
+                        return;
+                    }
+                    img.src = retryUrl(page.url, attempt);
+                }, delay)
+            );
+            return;
+        }
+        // 重试用尽：允许用户手动点一次
+        wrap.classList.remove("is-slow");
+        wrap.classList.add("is-failed");
+        text.textContent = "加载失败 · 点击重试";
+        console.warn("图片加载失败:", page.url);
+    };
+
+    wrap.addEventListener("click", () => {
+        if (!wrap.classList.contains("is-failed") || droppedDivs.has(div)) {
+            return;
+        }
+        attempt = 0;
+        wrap.classList.remove("is-failed");
+        text.textContent = "加载中";
+        img.src = retryUrl(page.url, Date.now());
+    });
+
+    return {
+        onLoad: () => {
+            // 图片已经就位，占位层淡出后移除
+            wrap.style.opacity = "0";
+            trackTimer(
+                div,
+                setTimeout(() => wrap.remove(), 220)
+            );
+        },
+        onFail
+    };
+};
 
 const removePage = (page: WaterfallPageType) => {
     // 页已经回收，还没返回的尺寸探测没有意义，直接取消
@@ -70,6 +183,7 @@ const removePage = (page: WaterfallPageType) => {
     sizeAbortMap.delete(page);
     if (page.InsertDom) {
         droppedDivs.add(page.InsertDom);
+        clearPageTimers(page.InsertDom);
         // 用清空 src 而不是 removeAttribute：前者能让浏览器中止进行中的下载，
         // 后者只是移除属性，请求可能还会继续跑完
         while (page.InsertDom.firstChild) {
@@ -235,15 +349,18 @@ const createContentDiv = (page: WaterfallPageType) => {
     div.style.marginBottom = configStore.pageMargin + "px";
     div.style.width = page.divWidth + "px";
     div.style.height = page.divHeight + "px";
+    // 占位层用绝对定位盖在图上，容器必须是定位上下文
+    div.style.position = "relative";
     // 双开页的半块：图片按两倍宽渲染，容器裁掉另一半
     if (page.half !== undefined) {
         div.style.overflow = "hidden";
-        div.style.position = "relative";
     }
     const img = new Image();
     img.alt = "";
     img.decoding = "async";
-    img.src = page.url;
+    // 加载完成前透明，避免半张图先糊上来
+    img.style.opacity = "0";
+    img.style.transition = "opacity 0.2s ease";
 
     const imgOnload = (width: number, height: number) => {
         // 已从 DOM 移除的容器，迟到的回调一律忽略
@@ -289,6 +406,8 @@ const createContentDiv = (page: WaterfallPageType) => {
         const cached = viewStore.comicFileList.list.find((it) => it.index === page.index);
         if (cached?.width && cached?.height) {
             imgOnload(cached.width, cached.height);
+        } else if (slowNetwork.value) {
+            // 慢网时不再额外抢一个连接去探尺寸，等 img.onload 自己报
         } else {
             const controller = new AbortController();
             sizeAbortMap.set(page, controller);
@@ -301,17 +420,22 @@ const createContentDiv = (page: WaterfallPageType) => {
             });
         }
     }
+    // 占位层与加载逻辑都要在设 src 之前装好：图片命中缓存时 onload 会很快回调
+    const placeholder = createPagePlaceholder(div, img, page);
     img.onload = () => {
+        placeholder.onLoad();
+        img.style.opacity = "1";
         imgOnload(img.naturalWidth, img.naturalHeight);
     };
     img.onerror = () => {
         if (droppedDivs.has(div)) {
             return;
         }
-        // 网络不好时保留估算占位，不让单张图失败阻塞后面的页
-        console.warn("图片加载失败:", page.url);
+        // 失败交给占位层：自动重试两次，仍失败就显示可点击的提示
+        placeholder.onFail();
     };
     div.appendChild(img);
+    img.src = page.url;
     return div;
 };
 
@@ -322,11 +446,14 @@ const setDisplayPage = (page: WaterfallPageType) => {
     const oldPageList = [...displayPageList];
     let height = 0;
     const maxScreenHeight = screenHeight * preloadScreenCount;
+    // 慢网时少驻留几张，先保证当前页能加载出来
+    const displayLimit = slowNetwork.value ? slowMaxDisplayPageCount : maxDisplayPageCount;
+    const preloadLimit = slowNetwork.value ? slowPreloadPageCount : preloadPageCount;
     // 同时驻留的 <img> 不超过 maxDisplayPageCount 个，手机上不会因为解码位图过多被杀页
-    for (let i = start; i < sortPageList.length && newPageList.length < maxDisplayPageCount; i++) {
+    for (let i = start; i < sortPageList.length && newPageList.length < displayLimit; i++) {
         const item = sortPageList[i];
         height += item.displayHeight;
-        if (height <= maxScreenHeight || newPageList.length < preloadPageCount) {
+        if (height <= maxScreenHeight || newPageList.length < preloadLimit) {
             newPageList.push(item);
         }
     }
