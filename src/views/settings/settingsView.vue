@@ -107,7 +107,25 @@ watch(tab, value => {
 
 <style scoped lang="scss">
 .parent {
+    /* #main 是定高 + overflow:hidden 的 flex 容器，这一页内容比一屏高，
+       必须自己滚动，否则底部（数据页的清理按钮等）会被直接裁掉 */
+    height: 100%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
     padding-bottom: 24px;
+    box-sizing: border-box;
+
+    /* 和其它列表页保持一致：能滚但不显示滚动条 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
+    }
 
     .tabs {
         padding: 0 8px;

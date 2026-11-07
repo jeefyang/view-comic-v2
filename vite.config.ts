@@ -3,7 +3,6 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import vueJsx from '@vitejs/plugin-vue-jsx';
-import vueDevTools from 'vite-plugin-vue-devtools';
 
 import AutoImport from 'unplugin-auto-import/vite';
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers';
@@ -16,7 +15,6 @@ export default defineConfig({
     plugins: [
         vue(),
         vueJsx(),
-        // vueDevTools(),
         UnoCSS(),
         AutoImport({
             imports: [
@@ -43,4 +41,5 @@ export default defineConfig({
         },
     },
 
+    // 开发服务器由 server/dev.mjs 启动（页面与 /api 同一个端口，端口读 .env 的 PORT）
 });

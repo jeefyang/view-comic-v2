@@ -12,13 +12,11 @@
 <script setup lang="ts">
 import VirtualList, { type VirtualListInstance } from "@/components/VirtualList.vue";
 import { useViewStore } from "@/stores/view";
-import { on } from "events";
 import { onMounted, ref, watch, useTemplateRef, onActivated } from "vue";
 import { nanoid } from "nanoid";
 import FileItem from "./FileItem.vue";
 import { useElementSize } from "@vueuse/core";
 import { useMessage } from "naive-ui";
-import { t } from "vue-router/dist/index-Cu9B0wDz.mjs";
 import router from "@/router";
 
 const viewStore = useViewStore();
