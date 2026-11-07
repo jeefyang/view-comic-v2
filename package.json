@@ -5,9 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "node server/dev.mjs",
-    "build": "run-p type-check \"build-only {@}\" --",
-    "preview": "vite preview",
+    "build": "run-s build-only build-server build-prod gen-ecosystem",
+    "build:check": "run-s type-check build",
     "build-only": "vite build",
+    "build-server": "vite build --ssr server/index.ts --outDir dist/server --emptyOutDir",
+    "build-prod": "node scripts/build-prod.mjs",
+    "gen-ecosystem": "node scripts/gen-ecosystem.mjs",
+    "start": "node dist/server/prod.mjs",
+    "preview": "vite preview",
     "type-check": "vue-tsc --build"
   },
   "dependencies": {

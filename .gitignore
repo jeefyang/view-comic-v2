@@ -41,3 +41,6 @@ __screenshots__/
 .history
 data
 test
+
+ecosystem.config.cjs
+logs/

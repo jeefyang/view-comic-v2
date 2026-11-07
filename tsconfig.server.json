@@ -4,7 +4,7 @@
     "compilerOptions": {
         "composite": true,
         "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo",
-        "outDir": "./dist/server",
+        "outDir": "./node_modules/.tmp/server-types",
         "module": "ESNext",
         "moduleResolution": "Bundler",
         "allowJs": true,

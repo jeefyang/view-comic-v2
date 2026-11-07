@@ -17,12 +17,23 @@
   - 其余请求交给 `vite.middlewares`，最后兜底用 `transformIndexHtml` 吐 `index.html`
   - 端口写在本项目根目录的 .env（PORT=6006，不用 Vue 默认的 5173）；被占用时启动即报「端口 6006 已被占用 —— 很可能已经有一个 pnpm dev 在跑了」，不会静默换端口
   - `server/index.ts` 里**不要再自建 HTTP server**（历史上它自己 `listen(5173)`，与 dev server 抢端口 → `EADDRINUSE` 直接退出）
-- `pnpm type-check` → `vue-tsc --build`（注意 `tsconfig.server.json` 里 `noEmit: false`，会额外生成 `dist/server`，已 gitignore）
+- `pnpm type-check` → `vue-tsc --build`（`tsconfig.server.json` 是 `noEmit: false`，会真的产出文件，`outDir` 已挪到 `node_modules/.tmp/server-types`，不要指回 `dist/server` 否则和 SSR 产物抢目录）
+
+## 构建与部署
+
+- `pnpm build` → 四步串行：`build-only`（`vite build`，出 `dist/` 前端）→ `build-server`（`vite build --ssr server/index.ts --outDir dist/server --emptyOutDir`，出**单文件** `dist/server/index.js`）→ `build-prod`（把 `server/prod.ts` 编译成 `dist/server/prod.mjs`，见 `scripts/build-prod.mjs`）→ `gen-ecosystem`（生成 `ecosystem.config.cjs`）。
+- 服务端用 Vite 的 SSR 构建而不是 `tsc`，是为了顺手解决两件事：`@common/*` 别名被内联（`tsc` 产物里仍留着别名，Node 解析不了），以及 `__dirname` 落在 `dist/server` 时 `server/utils/cache.ts` 的 `path.resolve(__dirname, "../../data")` 正好指回项目根的 `data/`（用 `tsc` 的 `dist/server/server/...` 会去读 `dist/server/data`，得到一个空库）。
+- 生产启动器：源码 `server/prod.ts`（TS，可改、参与类型检查）→ 构建产物 `dist/server/prod.mjs`（2.9 kB，依赖保持 external）。**PM2 跑的是产物那份**，所以 `dist/` 基本自包含（只差 `node_modules` / `.env` / `data/`）。
+- `pnpm start` → `node dist/server/prod.mjs`：从自身位置往上找含 `package.json` 的目录作为项目根（所以源码位置和 `dist/server` 位置都能跑），读根目录 `.env`，校验 `dist/server/index.js` 与 `dist/index.html` 存在，动态 `import` 出 express app，挂 `express.static(dist)` + 非 `/api` 的 GET/HEAD 兜底回 `index.html`，自己 `listen`（端口读 `.env` 的 `PORT`，默认 6006），`listen` 成功后 `process.send("ready")` 配合 PM2 的 `wait_ready`，`SIGINT/SIGTERM` 优雅关闭。
+- PM2：`ecosystem.config.example.cjs` 是模板，`ecosystem.config.cjs` 由 `pnpm build`（或单独 `pnpm gen-ecosystem`）在**不存在时**复制生成，**已存在就不覆盖**；两个文件都不进 git（`.gitignore` 里有 `ecosystem.config.cjs` 与 `logs/`）。`script` 用 `path.join(__dirname, "dist/server/prod.mjs")` 绝对路径，避开 PM2 对相对路径按 `cwd` 解析的规则。
+- `pnpm build:check` = `type-check` + `build`。`pnpm build` 之所以不串 `type-check`，是因为仓库里还有 7 个历史类型错误（见下），会把整个构建卡在第一步、产物出不来；要在 CI 里卡类型就用 `build:check`。
+- 打包（`vite build` / `vite build --ssr`）在本机需要在沙箱外跑：esbuild 起子进程会 `spawn EPERM`。飞牛（Debian，glibc ≥ 2.36）上 `sharp` 有预编译包，但**原生模块不能跨平台拷**，必须在目标机 `pnpm install`。
 
 ## 目录
 
 - `common/apis/*` 前后端共享的接口契约；`common/utils/*` 共享纯函数（重点是 `nameSort.ts`）
 - `server/routes/*` 路由；`server/utils/*` 业务与缓存（`library.ts` / `view.ts` / `myStreamZip.ts` / `user.ts`）
+- `server/dev.mjs` 开发启动器（单端口 + 后端热重载）；`server/prod.ts` 生产启动器源码（构建成 `dist/server/prod.mjs`，PM2 指向它）
 - `src/views/{library,shelf,reader,settings}` 四个页面；`src/stores/{view,config}.ts`
 - `public/reader/tap-zones/*.json` 点击区域默认布局与预设
 - `data/*.json`：`library.json` 书库、`user.json` 用户、`totken.json` token、`userConfig.json` 用户设置（含云布局）、`config.json`
@@ -83,6 +94,7 @@
 
 ## 已知待办
 
+- 那 7 个历史类型错误还在，`pnpm build:check` 会因此失败（`pnpm build` 不受影响）
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - 书架排序偏好未持久化（刷新回默认）；`rar` 仍被当普通文件处理
 - 视频文件只做了类型角标，未取首帧缩略图
