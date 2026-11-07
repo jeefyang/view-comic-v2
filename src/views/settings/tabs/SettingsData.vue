@@ -22,7 +22,6 @@ import XBlockButton from "@/components/XBlockButton.vue";
 import XSwitchItem from "@/components/XSwitchItem.vue";
 import { useConfigStore } from "@/stores/config";
 import { appFeatures } from "@/utils/appFeatures";
-import { viewFetch } from "@/utils/jFetch";
 import { clearThumbCache } from "@/utils/thumbCache";
 
 const dialog = useDialog();
@@ -32,18 +31,12 @@ const configStore = useConfigStore();
 const handleClearThumbs = () => {
     dialog.warning({
         title: "提示",
-        content: `确定要清除缩略图缓存吗？服务端与本地缓存都会被清空，之后浏览会重新生成。`,
+        content: `确定要清除缩略图缓存吗？只清除本机浏览器里的缓存，服务端文件不动；之后浏览会重新生成。`,
         positiveText: "确定",
         negativeText: "取消",
         onPositiveClick: async () => {
-            const res = await viewFetch.request("clearThumbs");
             await clearThumbCache();
-            if (res.code === 200) {
-                msg.success(`已清除 ${res.data?.count ?? 0} 张缩略图`);
-            }
-            else {
-                msg.error(res.msg || "清除缩略图失败");
-            }
+            msg.success("已清除本地缩略图缓存（服务端文件保留）");
         }
     });
 };

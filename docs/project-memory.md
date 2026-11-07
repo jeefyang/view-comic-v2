@@ -64,6 +64,11 @@
 ### 缩略图
 - 地址：`/api/Thumbnail/{editUUID}/{width}/{相对路径}`，路径里可以带压缩包内条目（`img.zip/0001.jpg`），由 `server/utils/thumb.ts` 的 `splitZipEntry()` 拆。
 - 生成：`getThumbBuffer()` 命中磁盘直接读，否则按类型取源图（目录取自然序首图、图片取自身、压缩包取包内第一张图），sharp 按宽度等比缩放成 jpeg，落 `data/thumbs/{thumbId}_{width}.jpg`（`thumbId = sha1(库名 + \0 + 相对路径).slice(0,20)`）。
+- 「按 id + 宽度查询，没有就生成」就是全部策略：没被请求过的路径不会生成文件，`data/thumbs` 一开始可能根本不存在（`ensureDir()` 在生成时才建）。
+- 目录书里一个图片都没有时（常见形态：只放了一个 `compare.zip` 的 `compare/`），回退到目录内第一个压缩包的首图（`firstZipInDir()`，只试前 3 个包），否则封面 404。
+- 算 id 前路径必须过 `normalizeRelPath()`（`\`→`/`、合并 `//`、去掉开头 `./`、空串归 `"."`）：前端不同入口会拼出 `img-001.jpg` 与 `./img-001.jpg`，不归一就会给同一个文件各存一份。
+- 书库根一律用 `library.ts` 的 `resolveLibRoot(pathUrl)`（相对路径按 `PROJECT_ROOT` 解析），不要用 `process.cwd()`：`library.json` 里存的是相对路径，换个工作目录启动就表现为「书列表正常、图片和缩略图全 404」。
+- 排障日志：`thumb.ts` 对「没有对应书库 / 路径越界或不存在 / 内部没有可用图片」三类失败各用 `warnOnce()` 打一次（同 key 只打一次，上限 500 条后清空），日志在 `logs/error-0.log`。
 - 背压：同时解码上限 2 张、排队 32 张；超了抛 `ThumbBusyError`，路由回 **503 + `Retry-After: 3`**，前端 `ThumbImage.vue` 最多退避重试 3 次，不会把图误判成「没有缩略图」。
 - 前端：`ThumbImage.vue` 先查 IndexedDB（`src/utils/thumbCache.ts`，库 `view-comic-thumbs`，最多 600 条，按时间淘汰），未命中才请求接口；全局并发 4；用 `object-fit: contain` 保证整图可见。
 - 开关：`src/utils/appFeatures.ts` 的 `appFeatures.thumbnails`（设置 → 数据 → 缩略图）。关掉后前端一个请求都不发，书架与阅读页文件列表都退回图标。
@@ -71,6 +76,7 @@
 
 ## 约定与陷阱
 
+- **生产环境的 CSP 必须放行 `blob:`**：`server/index.ts` 只在 `NODE_ENV !== 'development'` 时才 `app.use(helmet(...))`，helmet 默认 CSP 是 `img-src 'self' data:`，而 `'self'` **不匹配 `blob:` 协议**；缩略图恰好是 `fetch → URL.createObjectURL → <img src="blob:...">`，于是打包版整面灰块、图位显示 `alt` 文字，开发版却完全正常（dev 的 HTML 由 Vite 中间件返回，helmet 只作用在 `/api` 响应上）。现在 `img-src` / `media-src` / `connect-src` 都显式带了 `blob:`，改动见 `server/index.ts`。
 - **路径穿越**：凡是「库根 + 相对路径」都要过 `server/utils/pathSafe.ts` 的 `resolveInsideRoot()`，它同时做字符串包含与 `realpath` 校验。
 - **404 必须用 `res.sendStatus(404)`**：express 5 的 `res.send(404)` 实际返回 200 + body `404`。
 - **`basePath` 语义**：压缩包书是压缩包自身相对路径（如 `img.zip`、`compare/compare.zip`），目录书是目录相对路径（根目录为 `"."`）。`reloadComicViewList()` 要把它拆成「父路径 + 最后一段」再传给 `comicViewList`。
@@ -98,3 +104,4 @@
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - 书架排序偏好未持久化（刷新回默认）；`rar` 仍被当普通文件处理
 - 视频文件只做了类型角标，未取首帧缩略图
+- **书架 / 阅读页的缩略图路径竞态还没修**：`FileItem.vue` 的 `thumbPath` 是 `[...viewStore.shelfPath, item.name].join("/")` 实时算的，`FileListDrawer.vue` 的 `pagePath` 也是实时读 `basePath`；切目录 / 换书的一瞬间旧行会带着新前缀发请求，于是出现 `compare/img-006.jpg`、`number/img-004.jpg` 这种不存在的路径（404，日志里那批「路径不存在或越界」）。修法是让条目自己带 `thumbPath` / `path`，并在 `updateShelfFolder()` 里先清空旧列表

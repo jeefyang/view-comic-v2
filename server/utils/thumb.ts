@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { imageTypeList } from "@common/utils/ext.js";
 import { sortFileList } from "@common/utils/nameSort.js";
 import { DATA_DIR } from "./cache.js";
-import { getLibCache } from "./library.js";
+import { getLibCache, resolveLibRoot } from "./library.js";
 import { getMyStreamZip } from "./myStreamZip.js";
 import { resolveInsideRoot } from "./pathSafe.js";
 
@@ -27,8 +27,21 @@ export function isThumbWidth(width: number) {
  * 缩略图的稳定 id：书库名 + 相对路径 的 sha1 前 20 位。
  * 纯计算、不落库，同一张图任何时候算出来都一样，所以文件名可以直接当索引。
  */
+/**
+ * 路径归一化：缩略图 id 必须「同一个文件永远同一个 id」，
+ * 所以 `compare\a.zip`、`compare/a.zip`、`./compare/a.zip`、`compare//a.zip` 先统一成一种写法再算哈希，
+ * 否则同一张图会因为前端入口不同被重复生成好几份。
+ */
+export function normalizeRelPath(relPath: string) {
+    const normalized = String(relPath || "")
+        .replace(/\\/g, "/")
+        .replace(/\/{2,}/g, "/")
+        .replace(/^\.\//, "");
+    return normalized === "" ? "." : normalized;
+}
+
 export function thumbId(libName: string, relPath: string) {
-    return crypto.createHash("sha1").update(`${libName}\u0000${relPath}`).digest("hex").slice(0, 20);
+    return crypto.createHash("sha1").update(`${libName}\u0000${normalizeRelPath(relPath)}`).digest("hex").slice(0, 20);
 }
 
 /** 最终文件名：{20 位 id}_{宽度}.jpg */
@@ -40,6 +53,23 @@ function ensureDir() {
     if (!fs.existsSync(THUMB_DIR)) {
         fs.mkdirSync(THUMB_DIR, { recursive: true });
     }
+}
+
+/**
+ * 同一个路径只提示一次：缩略图缺失会被前端整屏轮询式地重试，
+ * 不节流的话日志会被刷爆。
+ */
+const warned = new Set<string>();
+
+function warnOnce(key: string, message: string) {
+    if (warned.has(key)) {
+        return;
+    }
+    if (warned.size > 500) {
+        warned.clear();
+    }
+    warned.add(key);
+    console.warn(message);
 }
 
 function isImageName(name: string) {
@@ -55,6 +85,29 @@ async function firstImageInDir(dir: string): Promise<string | undefined> {
     }
     const sorted = sortFileList(names.map((name) => ({ name })), "number", 1).map((i) => i.name);
     return path.join(dir, sorted[0]!);
+}
+
+/**
+ * 只装了压缩包的目录（`compare/compare.zip` 这种）：目录里没有直接的图片，
+ * 就用目录内第一个压缩包的首图。目录视图的封面本来就想表达「里面是什么书」。
+ */
+async function firstZipInDir(dir: string): Promise<Buffer | undefined> {
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
+    const names = entries
+        .filter((e) => e.isFile() && path.extname(e.name).slice(1).toLowerCase() === "zip")
+        .map((e) => e.name);
+    if (!names.length) {
+        return undefined;
+    }
+    const sorted = sortFileList(names.map((name) => ({ name })), "number", 1).map((i) => i.name);
+    // 只试前面几个包：一个目录里有几十个包时，别为了封面把队列占满
+    for (const name of sorted.slice(0, 3)) {
+        const buffer = await firstImageInZip(path.join(dir, name));
+        if (buffer) {
+            return buffer;
+        }
+    }
+    return undefined;
 }
 
 async function readAll(stream: NodeJS.ReadableStream): Promise<Buffer> {
@@ -245,17 +298,20 @@ async function withSlot<T>(task: () => Promise<T>): Promise<T> {
 export async function getThumbBuffer(editUUID: string, relPath: string, width: number): Promise<Buffer | undefined> {
     const size = isThumbWidth(width) ? width : DEFAULT_THUMB_WIDTH;
     const lib = getLibCache().find((item) => item.editUUID === editUUID);
-    const root = lib?.pathUrl;
+    const root = lib ? resolveLibRoot(lib.pathUrl) : undefined;
     if (!root) {
+        warnOnce(`nolib:${editUUID}`, `[thumb] 取不到缩略图：没有找到 editUUID=${editUUID} 对应的书库（检查 data/library.json）`);
         return undefined;
     }
-    const zipSplit = splitZipEntry(relPath || "", root);
-    const target = resolveInsideRoot(root, zipSplit ? zipSplit.zipPath : (relPath || "."));
+    const rel = normalizeRelPath(relPath);
+    const zipSplit = splitZipEntry(rel, root);
+    const target = resolveInsideRoot(root, zipSplit ? zipSplit.zipPath : rel);
     if (!target || !fs.existsSync(target)) {
+        warnOnce(`nofile:${editUUID}:${rel}`, `[thumb] 取不到缩略图：路径不存在或越界 ${rel}（书库根 ${root}）`);
         return undefined;
     }
 
-    const id = thumbId(lib.name || root, relPath || ".");
+    const id = thumbId(lib?.name || root, rel);
     const out = thumbFile(id, size);
     try {
         if (fs.existsSync(out)) {
@@ -283,6 +339,9 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
                 const stat = await fsp.stat(target);
                 if (stat.isDirectory()) {
                     source = await firstImageInDir(target);
+                    if (!source) {
+                        source = await firstZipInDir(target);
+                    }
                 }
                 else if (isImageName(target)) {
                     source = target;
@@ -292,6 +351,7 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
                 }
             }
             if (!source) {
+                warnOnce(`nosrc:${editUUID}:${rel}`, `[thumb] 取不到缩略图：${rel} 里没有可用的图片（目录为空 / 压缩包里没图片 / 不是图片文件）`);
                 return undefined;
             }
             ensureDir();
@@ -302,7 +362,7 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
                 throw e;
             }
             thumbStats.failed++;
-            console.error("生成缩略图失败:", relPath, e);
+            console.error("生成缩略图失败:", rel, e);
             return undefined;
         }
     }).finally(() => {

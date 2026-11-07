@@ -1,5 +1,6 @@
 import fs from "fs";
-import { LIBRARY_FILE } from "../utils/cache";
+import path from "path";
+import { LIBRARY_FILE, PROJECT_ROOT } from "../utils/cache";
 import { nanoid } from 'nanoid';
 import { getUserFromToken } from "./user";
 
@@ -107,6 +108,11 @@ export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any]
     return [item, undefined];
 };
 
+/** 书库里存的是相对路径（如 `../JComicViewFrame/public/`），一律相对项目根解析，避免受 process.cwd() 影响 */
+export function resolveLibRoot(pathUrl: string) {
+    return path.isAbsolute(pathUrl) ? pathUrl : path.resolve(PROJECT_ROOT, pathUrl);
+}
+
 export function getLibPathByUUID(uuid?: string, editUUID?: string): [string | undefined, any] {
     let index = -1;
     if (uuid) {
@@ -118,5 +124,5 @@ export function getLibPathByUUID(uuid?: string, editUUID?: string): [string | un
     if (index == -1) {
         return [undefined, '未找到'];
     }
-    return [libCache[index].pathUrl, undefined];
+    return [resolveLibRoot(libCache[index].pathUrl), undefined];
 }

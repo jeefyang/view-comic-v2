@@ -31,7 +31,24 @@ app.get('/health', (_req, res) => {
 // 这里不自建 HTTP 服务，否则会和启动器抢端口（EADDRINUSE）。
 // 生产环境：由外部进程 import 本模块后自行监听端口。
 if (process.env.NODE_ENV !== 'development') {
-    app.use(helmet());
+    /**
+     * 生产环境才加 helmet（开发时 HTML 由 Vite 中间件返回，压根走不到这里）。
+     *
+     * CSP 必须显式放行 blob:：缩略图是「fetch 拿二进制 → URL.createObjectURL() → <img src="blob:...">」，
+     * 而 helmet 默认的 `img-src 'self' data:` 里 `'self'` 并不匹配 blob: 协议，
+     * 浏览器会直接拒绝加载（图片能拿到、但显示成 alt 文字），换浏览器也一样。
+     * 同理连接 blob: 走的是 connect-src。
+     */
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+                "img-src": ["'self'", "data:", "blob:"],
+                "media-src": ["'self'", "data:", "blob:"],
+                "connect-src": ["'self'", "blob:"]
+            }
+        }
+    }));
 }
 
 export { app as viteNodeApp };

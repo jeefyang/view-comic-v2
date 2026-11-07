@@ -138,6 +138,7 @@ async function load() {
         if (!response.ok) {
             failedKeys.add(key);
             failed.value = true;
+            console.warn("[thumb] 缩略图请求失败", response.status, request);
             return;
         }
         const blob = await response.blob();

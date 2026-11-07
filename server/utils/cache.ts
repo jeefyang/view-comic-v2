@@ -8,6 +8,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export const DATA_DIR = path.resolve(__dirname, '../../data');
+/** 项目根目录（data 的上一级）。书库里存的相对 pathUrl 一律相对它解析，而不是相对 process.cwd()。 */
+export const PROJECT_ROOT = path.dirname(DATA_DIR);
 export const USER_FILE = path.join(DATA_DIR, 'user.json');
 export const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 export const LIBRARY_FILE = path.join(DATA_DIR, 'library.json');
