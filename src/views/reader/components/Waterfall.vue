@@ -16,7 +16,7 @@ import { useViewStore } from "@/stores/view";
 import { readerSettings } from "@/views/reader/readerSettings";
 import { readerPages } from "@/views/reader/readerPages";
 import { decodeSize } from "@/utils/decodeSize";
-import { buildFileUrl, needsDownscale, SAFE_IMAGE_EDGE, withMaxEdge } from "@/utils/fileUrl";
+import { buildFileUrl } from "@/utils/fileUrl";
 import { slowNetwork } from "@/utils/network";
 import "@/views/reader/components/pageLoading.css";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -111,12 +111,7 @@ interface PagePlaceholder {
  * 图片加载期间的占位层：转圈 + 文案。
  * 瀑布流的 DOM 是命令式创建的，用不了 SFC，样式来自 pageLoading.css（全局）。
  */
-const createPagePlaceholder = (
-    div: HTMLDivElement,
-    img: HTMLImageElement,
-    page: WaterfallPageType,
-    downscaleUrl?: string
-): PagePlaceholder => {
+const createPagePlaceholder = (div: HTMLDivElement, img: HTMLImageElement, page: WaterfallPageType): PagePlaceholder => {
     const wrap = document.createElement("div");
     wrap.className = "page-loading";
     const spinner = document.createElement("span");
@@ -141,8 +136,6 @@ const createPagePlaceholder = (
     }
 
     let attempt = 0;
-    /** 已经改用降采样地址：之后的失败不再退回原图（原图本来就解不动） */
-    let usedDownscale = false;
 
     const onFail = () => {
         if (droppedDivs.has(div)) {
@@ -163,23 +156,6 @@ const createPagePlaceholder = (
             );
             return;
         }
-        // 原地址重试用尽：换成服务端降采样地址再试一次（超大图常见是浏览器解码不了）
-        if (downscaleUrl && !usedDownscale) {
-            usedDownscale = true;
-            attempt = 0;
-            wrap.classList.remove("is-failed");
-            text.textContent = "图片过大，正在压缩加载…";
-            trackTimer(
-                div,
-                setTimeout(() => {
-                    if (droppedDivs.has(div)) {
-                        return;
-                    }
-                    img.src = downscaleUrl;
-                }, 300)
-            );
-            return;
-        }
         // 重试用尽：允许用户手动点一次
         wrap.classList.remove("is-slow");
         wrap.classList.add("is-failed");
@@ -194,7 +170,7 @@ const createPagePlaceholder = (
         attempt = 0;
         wrap.classList.remove("is-failed");
         text.textContent = "加载中";
-        img.src = usedDownscale && downscaleUrl ? downscaleUrl : retryUrl(page.url, Date.now());
+        img.src = retryUrl(page.url, Date.now());
     });
 
     return {
@@ -396,20 +372,6 @@ const createContentDiv = (page: WaterfallPageType) => {
     img.style.opacity = "0";
     img.style.transition = "opacity 0.2s ease";
 
-    /** 超大图的服务端降采样地址：已知尺寸超线就直接用，未知则失败后退到这里 */
-    const downscaleUrl = withMaxEdge(page.url, SAFE_IMAGE_EDGE);
-    let downscaleApplied = false;
-    const applyDownscaleIfNeeded = (width: number, height: number) => {
-        if (downscaleApplied || !needsDownscale(width, height)) {
-            return;
-        }
-        downscaleApplied = true;
-        // 首次渲染时 img 还没 src，交给末尾统一赋值
-        if (img.src) {
-            img.src = downscaleUrl;
-        }
-    };
-
     const imgOnload = (width: number, height: number) => {
         // 已从 DOM 移除的容器，迟到的回调一律忽略
         if (droppedDivs.has(div)) {
@@ -446,7 +408,6 @@ const createContentDiv = (page: WaterfallPageType) => {
             img.style.height = page.divHeight + "px";
             img.style.left = (page.half === 0 ? 0 : -screenWidth) + "px";
         }
-        applyDownscaleIfNeeded(width, height);
     };
     if (page.loaded) {
         imgOnload(page.width, page.height);
@@ -470,7 +431,7 @@ const createContentDiv = (page: WaterfallPageType) => {
         }
     }
     // 占位层与加载逻辑都要在设 src 之前装好：图片命中缓存时 onload 会很快回调
-    const placeholder = createPagePlaceholder(div, img, page, downscaleUrl);
+    const placeholder = createPagePlaceholder(div, img, page);
     img.onload = () => {
         placeholder.onLoad();
         img.style.opacity = "1";
@@ -480,17 +441,11 @@ const createContentDiv = (page: WaterfallPageType) => {
         if (droppedDivs.has(div)) {
             return;
         }
-        // 失败交给占位层：自动重试两次，仍失败就换降采样地址，再失败给可点击的提示
+        // 失败交给占位层：自动重试两次，仍失败就显示可点击的提示
         placeholder.onFail();
     };
     div.appendChild(img);
-    if (needsDownscale(page.width, page.height)) {
-        // 尺寸已知且超线：直接要降采样版本，省掉一次注定失败的整图解码
-        downscaleApplied = true;
-        img.src = downscaleUrl;
-    } else {
-        img.src = page.url;
-    }
+    img.src = page.url;
     return div;
 };
 

@@ -49,7 +49,7 @@ import { readerSettings } from "@/views/reader/readerSettings";
 import type { ReaderModeHandle } from "@/views/reader/modes/types";
 import { computeFit } from "@/views/reader/modes/fitStrategies";
 import { decodeSize } from "@/utils/decodeSize";
-import { buildFileUrl, needsDownscale, SAFE_IMAGE_EDGE } from "@/utils/fileUrl";
+import { buildFileUrl } from "@/utils/fileUrl";
 import { slowNetwork } from "@/utils/network";
 import { loadTapZones, tapZones } from "@/views/reader/tapZones/useTapZones";
 import type { TapActionKey } from "@/views/reader/tapZones/actions";
@@ -91,31 +91,16 @@ const clampIndex = (i: number) => {
 const index = ref(clampIndex(props.jump));
 const page = computed(() => list.value[index.value]);
 
-/** 与瀑布流一致的取图地址；`maxEdge` 非空表示要服务端先降采样（超大图） */
-const urlOf = (target: typeof page.value, maxEdge?: number) => {
+/** 与瀑布流一致的取图地址 */
+const urlOf = (target: typeof page.value) => {
     const editUUID = viewStore.curLibrary?.editUUID;
     if (!target || !editUUID) {
         return "";
     }
-    return buildFileUrl(editUUID, target.index, viewStore.comicFileList?.basePath, maxEdge);
+    return buildFileUrl(editUUID, target.index, viewStore.comicFileList?.basePath);
 };
 
-/** 试过普通地址仍失败后，强制走降采样地址 */
-const forceDownscale = ref(false);
-
-/**
- * 该不该降采样：已知尺寸超线就直接降；未知时先按原图试（见 onImgError 的兜底）。
- * 注意 `pageSize` 在下面才定义 —— computed 是惰性求值的，这里引用没问题。
- */
-const downscaleEdge = computed<number | undefined>(() => {
-    if (forceDownscale.value) {
-        return SAFE_IMAGE_EDGE;
-    }
-    const { width, height } = pageSize.value;
-    return needsDownscale(width, height) ? SAFE_IMAGE_EDGE : undefined;
-});
-
-const pageUrl = computed(() => urlOf(page.value, downscaleEdge.value));
+const pageUrl = computed(() => urlOf(page.value));
 
 /* ---------- 加载态：慢网提示 + 失败自动重试 ---------- */
 const loading = ref(true);
@@ -214,15 +199,9 @@ const fitSize = computed(() => {
 });
 
 const fit = computed(() => {
-    const { width, height } = fitSize.value;
-    // 尺寸或视口任一未知就先不摆：computeFit 在这种情况下会退化成 1:1，
-    // 表现是「旋转适应不旋转、宽度适应按原尺寸显示（过小）」，等尺寸到了再算。
-    if (width <= 0 || height <= 0 || viewSize.width <= 0 || viewSize.height <= 0) {
-        return null;
-    }
     // rotate 与裁切互相打架，双开页时退化回 contain
     const mode = isSpread.value && readerSettings.fitMode === "rotate" ? "fit" : readerSettings.fitMode;
-    return computeFit(width, height, viewSize.width, viewSize.height, mode);
+    return computeFit(fitSize.value.width, fitSize.value.height, viewSize.width, viewSize.height, mode);
 });
 
 /** 双开页当前显示的是第几半：0 = 左半，1 = 右半 */
@@ -231,16 +210,13 @@ const half = ref(0);
 /** 拖动平移量：宽度/高度适应时图片比视口大，允许拖动查看被裁掉的部分 */
 const offset = reactive({ x: 0, y: 0 });
 
-/** 实际占位尺寸（rotate 90 时图片宽高互换）；尺寸未就绪时按 0 处理 */
+/** 实际占位尺寸（rotate 90 时图片宽高互换） */
 const renderedSize = computed(() => {
-    const f = fit.value;
-    if (!f) {
-        return { width: 0, height: 0 };
+    const { width, height, rotate } = fit.value;
+    if (rotate) {
+        return { width: height, height: width };
     }
-    if (f.rotate) {
-        return { width: f.height, height: f.width };
-    }
-    return { width: f.width, height: f.height };
+    return { width, height };
 });
 
 /** 超出视口的量，两侧各一半（flex 居中） */
@@ -284,40 +260,28 @@ watch(() => [overflow.value.x, overflow.value.y] as const, clampOffset);
 
 const translate = computed(() => `translate3d(${offset.x}px, ${offset.y}px, 0)`);
 
-const spreadBoxStyle = computed(() => {
-    const f = fit.value;
-    if (!f) {
-        return {};
-    }
-    return {
-        width: `${f.width}px`,
-        height: `${f.height}px`,
-        transform: translate.value
-    };
-});
+const spreadBoxStyle = computed(() => ({
+    width: `${fit.value.width}px`,
+    height: `${fit.value.height}px`,
+    transform: translate.value
+}));
 
-const spreadImgStyle = computed(() => {
-    const f = fit.value;
-    if (!f) {
-        return {};
-    }
-    return {
-        width: `${f.width * 2}px`,
-        height: `${f.height}px`,
-        left: half.value === 1 ? `${-f.width}px` : "0px"
-    };
-});
+const spreadImgStyle = computed(() => ({
+    width: `${fit.value.width * 2}px`,
+    height: `${fit.value.height}px`,
+    left: half.value === 1 ? `${-fit.value.width}px` : "0px"
+}));
 
 const imgStyle = computed(() => {
-    const f = fit.value;
-    if (!f) {
-        // 尺寸未知：先按容器装下整张图，等真实宽高回来再按适配方式摆
+    const { width, height, rotate } = fit.value;
+    if (width <= 0 || height <= 0) {
+        // 尺寸未知时先按原生大小显示，等 load 回调补上尺寸
         return { maxWidth: "100%", maxHeight: "100%" };
     }
     return {
-        width: `${f.width}px`,
-        height: `${f.height}px`,
-        transform: `${translate.value}${f.rotate ? ` rotate(${f.rotate}deg)` : ""}`
+        width: `${width}px`,
+        height: `${height}px`,
+        transform: `${translate.value}${rotate ? ` rotate(${rotate}deg)` : ""}`
     };
 });
 
@@ -326,22 +290,6 @@ const preloaded = new Map<string, HTMLImageElement>();
 const MAX_PRELOAD = 5;
 /** 慢网时只预热前后各一张，别跟当前页抢带宽 */
 const maxPreload = () => (slowNetwork.value ? 2 : MAX_PRELOAD);
-
-/** 预热上限：3000 万像素（约 120MB 位图），超过就跳过，避免为翻页把内存吃穿 */
-const PRELOAD_MAX_PIXELS = 30_000_000;
-
-const preloadable = (target: typeof page.value) => {
-    if (!target) {
-        return false;
-    }
-    const cached = sizeMap[sizeKey(target)];
-    const size = cached ?? (target.width && target.height ? { width: target.width, height: target.height } : undefined);
-    if (!size) {
-        // 尺寸未知：先允许预热，真正的解码代价由浏览器承担
-        return true;
-    }
-    return size.width * size.height <= PRELOAD_MAX_PIXELS;
-};
 
 const ensureSize = (target: typeof page.value) => {
     const key = sizeKey(target);
@@ -380,10 +328,6 @@ const preloadNearby = () => {
     for (const i of targets) {
         const target = list.value[i];
         if (!target) {
-            continue;
-        }
-        // 超大图不预热：一张 8000 万像素的位图就有 320MB，预热两三张直接把页搞崩
-        if (!preloadable(target)) {
             continue;
         }
         const url = urlOf(target);
@@ -491,8 +435,6 @@ const onImgLoad = (e: Event) => {
     failed.value = false;
     retrying.value = false;
     slow.value = false;
-    // 图到了说明容器确实有尺寸，这里再量一次，把首帧量空的视口补上
-    measure();
     const current = page.value;
     if (!current || sizeMap[sizeKey(current)]) {
         return;
@@ -505,14 +447,9 @@ const onImgLoad = (e: Event) => {
 const onImgError = () => {
     if (attempt < RETRY_DELAYS.length) {
         const delay = RETRY_DELAYS[attempt]!;
-        // 第一次失败按原地址重试；还失败就换成服务端降采样地址（多半是图太大，浏览器解不动）
-        const useDownscale = attempt === 1 && !downscaleEdge.value;
         attempt += 1;
         retrying.value = true;
         retryTimer = setTimeout(() => {
-            if (useDownscale) {
-                forceDownscale.value = true;
-            }
             // 换个 token 重新设 src，等于重试这一页
             retryToken.value = Date.now();
         }, delay);
@@ -527,11 +464,6 @@ const onImgError = () => {
 
 // 换页时重置加载态
 watch(pageUrl, () => resetLoadState(), { immediate: true });
-
-// 换了页就清掉「强制降采样」，别把上一页的兜底带到新页
-watch(() => index.value, () => {
-    forceDownscale.value = false;
-});
 
 const onKeydown = (e: KeyboardEvent) => {
     // 翻页方向只管双开页的左右先后，不影响「下一页」的方向键语义
@@ -552,34 +484,15 @@ const pagePaddingStyle = computed(() => ({
     paddingRight: configStore.paddingRight + "px"
 }));
 
-let measureAttempt = 0;
-
-/** 首帧容器可能还没尺寸（缓存页恢复 / 抽屉动画中），量到 0 就隔帧再试几次 */
-const scheduleMeasure = () => {
-    if (measureAttempt >= 10) {
-        return;
-    }
-    measureAttempt += 1;
-    requestAnimationFrame(measure);
-};
-
 const measure = () => {
     const el = containerRef.value;
     if (!el) {
-        scheduleMeasure();
         return;
     }
     const rect = el.getBoundingClientRect();
     // getBoundingClientRect 含 padding，可用区域要减掉，否则图片会顶到边距里
-    const width = Math.max(0, Math.round(rect.width) - configStore.paddingLeft - configStore.paddingRight);
-    const height = Math.max(0, Math.round(rect.height) - configStore.paddingTop - configStore.paddingBottom);
-    if (width <= 0 || height <= 0) {
-        scheduleMeasure();
-        return;
-    }
-    measureAttempt = 0;
-    viewSize.width = width;
-    viewSize.height = height;
+    viewSize.width = Math.max(0, Math.round(rect.width) - configStore.paddingLeft - configStore.paddingRight);
+    viewSize.height = Math.max(0, Math.round(rect.height) - configStore.paddingTop - configStore.paddingBottom);
 };
 
 watch(

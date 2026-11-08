@@ -12,7 +12,6 @@ import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
 import { resolveInsideRoot } from '../utils/pathSafe.js';
 import { getThumbBuffer, ThumbBusyError } from '../utils/thumb.js';
-import { getScaledImage, isScalableImage } from '../utils/largeImage.js';
 
 const router: Router = Router();
 
@@ -102,40 +101,6 @@ const sendStream = (res: any, o: {
     o.open(range.start, range.end).pipe(res);
 };
 
-/**
- * 超大图的降采样响应：尺寸超线时返回缩小的副本，没超就返回 false 让调用方回原图。
- * 只用于 `?max=` 且是位图的场景，Range 一律忽略（响应是重新编码的完整图）。
- */
-const trySendScaled = async (
-    res: any,
-    source: string | Buffer,
-    keySource: string,
-    name: string,
-    maxEdge: number
-): Promise<boolean> => {
-    const scaled = await getScaledImage(source, keySource, maxEdge, name);
-    if (!scaled) {
-        return false;
-    }
-    res.setHeader("Content-Type", scaled.contentType);
-    res.setHeader("Content-Length", String(scaled.buffer.length));
-    res.setHeader("Accept-Ranges", "none");
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.status(200).end(scaled.buffer);
-    return true;
-};
-
-/** 把整条解压流读成 Buffer（压缩包内条目要交给 sharp 时用） */
-const readStreamToBuffer = (stream: NodeJS.ReadableStream): Promise<Buffer> =>
-    new Promise((resolve, reject) => {
-        const chunks: Buffer[] = [];
-        stream.on("data", (chunk: Buffer | string) => {
-            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-        });
-        stream.on("end", () => resolve(Buffer.concat(chunks)));
-        stream.on("error", reject);
-    });
-
 // 文件读取
 router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     const editUUID = req.params.editUUID;
@@ -154,9 +119,6 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     if (isNaN(num)) {
         return res.sendStatus(404);
     }
-    // `?max=<边长>`：超大图让服务端先缩到这个边长再回，避免浏览器解码失败
-    const maxRaw = parseInt(String(req.query.max ?? ""), 10);
-    const maxEdge = Number.isFinite(maxRaw) && maxRaw >= 256 && maxRaw <= 20000 ? maxRaw : 0;
     const data = getLibPathByUUID(undefined, editUUID);
     if (data[1]) {
         return res.sendStatus(404);
@@ -179,12 +141,6 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
             }
 
             const fileP = path.join(url, data[0]!.list[num].name);
-            // 超大图先缩一遍再回，缩不动（本来就没超线）就继续走原链路
-            if (maxEdge && isScalableImage(fileP)) {
-                if (await trySendScaled(res, fileP, `dir:${fileP}`, fileP, maxEdge)) {
-                    return;
-                }
-            }
             const fileSize = fs.statSync(fileP).size;
             sendStream(res, {
                 size: fileSize,
@@ -209,11 +165,6 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
             // node-stream-zip 会拿 JPEG 当 zip 解析并抛 `Bad archive`，
             // 它是个未捕获的 'error' 事件，会把整个进程带下去（列表/缩略图/图片全部连带 404）。
             if (extData.extType !== "zip") {
-                if (maxEdge && isScalableImage(url)) {
-                    if (await trySendScaled(res, url, `file:${url}`, url, maxEdge)) {
-                        return;
-                    }
-                }
                 sendStream(res, {
                     size: stat.size,
                     contentType: getContentType(url),
@@ -242,19 +193,6 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
             const stream = await obj.getFileByIndex(num);
             if (!stream) {
                 return res.sendStatus(404);
-            }
-            // 压缩包内条目要交给 sharp 只能先整条读进内存；超大包内图另走降采样
-            if (maxEdge && isScalableImage(entry.name) && entry.size <= 256 * 1024 * 1024) {
-                const buffer = await readStreamToBuffer(stream);
-                const scaled = await getScaledImage(buffer, `zip:${url}#${entry.name}`, maxEdge, entry.name);
-                const body = scaled ? scaled.buffer : buffer;
-                res.setHeader("Content-Type", scaled ? scaled.contentType : getContentType(entry.name));
-                res.setHeader("Accept-Ranges", "none");
-                res.setHeader("Content-Length", String(body.length));
-                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-                res.status(200).end(body);
-                obj.finishStream();
-                return;
             }
             // node-stream-zip 只能把整条解压出来，做不了字节切片；这里忽略 Range，
             // 回 200 + 完整内容（HTTP 允许服务端忽略 Range，客户端会接受 200 的全量响应）。
