@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="漫画阅读器">
+    <rect width="64" height="64" rx="15" fill="#15161a" />
+    <rect x="8" y="8" width="22" height="22" rx="5" fill="#454a54" />
+    <rect x="34" y="8" width="22" height="22" rx="5" fill="#63e2b7" />
+    <rect x="8" y="34" width="22" height="22" rx="5" fill="#454a54" />
+    <rect x="34" y="34" width="22" height="22" rx="5" fill="#454a54" />
+</svg>
