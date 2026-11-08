@@ -57,6 +57,12 @@
 统一走 `src/utils/fileUrl.ts` 的 `buildFileUrl(editUUID, index, basePath)`，不要手拼 `api/file/...`。
 `basePath` 必须经 `normalizeBasePath()`：服务端 Windows 的 `path.join` 会给反斜杠，根目录会给 `"."`。
 
+### 图片文件服务（`/api/file`）
+- 一条路由分三种来源：`getFileExt(url)` 不是 `zip` 时按普通文件流式返回（`getContentType()` + `Accept-Ranges: bytes` + `immutable`）；是 `zip` 时走 `node-stream-zip` 取条目；路径是目录时取目录里第一张图。**别再「不是目录就当压缩包」**：曾经把根目录的单张 JPEG 喂给 `node-stream-zip`，`Bad archive` 一路崩掉整个进程。
+- Range 必须是真 Range：`parseRange()` 解析（支持 `bytes=start-end`、`bytes=-N`），`sendStream()` 统一发头 —— 有 Range → **206 + `Content-Range: bytes start-end/size` + 对应 `Content-Length`**；无 Range → `200 + Content-Length: size`；越界 → **416 + `Content-Range: bytes */size`**。
+- **绝对不要「截断之后仍回 200」**：旧的 `getLimitStream` 按字节截断上游流、状态码却是 200 还带 `immutable`，浏览器会把残包当成这张图的完整内容缓存一年（详见下方陷阱）。压缩包内条目做不了切片，**忽略 Range 回 200 全量**即可（HTTP 允许，关键是不截断）。
+- 图片地址末尾带版本号：`src/utils/fileUrl.ts` 的 `FILE_URL_VERSION`（现在是 `2`），`buildFileUrl()` 输出 `...?v=2`。URL 就是缓存键，改坏过的浏览器缓存只能靠升版本号作废。
+
 ### 图片加载占位与慢网降级
 - 组件：`src/views/reader/components/PageLoading.vue`（转圈 + 文案，`failed` 时 emit `retry`）；样式是**全局**的 `pageLoading.css`，因为瀑布流的页面容器是命令式创建的，拿不到 scoped 的 `data-v`。
 - 两个模式都有：`onload` 前图片透明（`opacity: 0` + 0.2s 过渡），占位层淡出移除；超过 3 秒文案切「网络较慢，仍在加载…」；失败自动重试 2 次（800ms / 2000ms，URL 追加 `?retry=` 避开失败缓存），仍失败显示「加载失败 · 点击重试」。
@@ -109,6 +115,8 @@
 - 纯 CSS 的 `<style scoped>` 里不能用 `//` 注释（会报 `Unknown word`）。
 - `#main` 是定高 + `overflow: hidden` 的弹性容器，页面内容超一屏要自己开滚动区（参考 `settingsView.vue` 的 `.parent`：`height: 100%; min-height: 0; overflow-y: auto;` + 隐藏滚动条）。
 - **滚动条统一走 `src/assets/scrollbar.css`**（在 `main.css` 之后引入）：全局 `*` 规则统一成 8px、圆角 999px、半透明灰滑块、轨道透明，Firefox 用 `scrollbar-width: thin` + `scrollbar-color` 两套写法都要留。naive-ui 自带的 `n-scrollbar` 不用 CSS 类而用 `--n-scrollbar-*` 变量，且这些变量内联写在元素上 → 只能靠 `.n-scrollbar { --n-scrollbar-color: ... !important }` 覆盖。抽屉（`n-drawer-content`）要加 `:native-scrollbar="false"` 才会用这套；书架列表、`VirtualList`、瀑布流、设置页仍刻意隐藏滚动条，它们的选择器优先级高于全局 `*` 规则，别一起改掉。
+- **Range 探测会污染浏览器缓存**：`src/utils/decodeSize.ts` 为了只取文件头，用 `Range: bytes=0-65536` 打**与 `<img>` 相同的 URL**。如果服务端不认 Range 却回 `200`（还带 `immutable`），浏览器会把这条 64KB 残包当完整内容存一年，紧接着的 `<img>` 命中缓存只拿到前 64KB —— 渐进式 JPEG（SOF `FF C2`）从 64KB 能解出「完整尺寸 + 只有低频扫描」，表现就是**整屏糊图**，且只有大于 64KB 的图中招，开 DevTools 禁用缓存就正常。改法只能是服务端发真 206，已经写坏的缓存靠 `FILE_URL_VERSION` 升版本作废。
+- **`node-stream-zip` 的 `error` 必须接住**：`myStreamZip.ts` 的 `init()` 里要先常驻 `obj.on("error", ...)` 把错误记进 `lastError` 并 reject 打开，否则 `Bad archive` 会变成未处理的 `'error'` 事件直接杀进程；缓存命中前还要检查 `lastError` 并剔除坏实例。另外 `server/index.ts` 用 `globalThis.__viewComicCrashGuard` 只注册一次 `uncaughtException` / `unhandledRejection` 兜底（只打日志不退出；不能重复注册，dev 下 `server/index.ts` 会被反复加载）。
 - **换行符不统一**：`src/views/shelf/shelfView.vue` 等文件是 CRLF，而 `docs/project-memory.md` 是 LF。`edit` 工具的多行 `old_string` 在 CRLF 文件里经常匹配不上（不是文本不对，是换行不同），改用单行锚点，或用 PowerShell 的 `Get-Content -Raw` + `Set-Content -NoNewline` 追加整段。
 - 依赖只留用得上的：`adm-zip` / `fflate` / `iconv-lite` / `yauzl` / `tsx` / `vite-plugin-inspect` / `vite-plugin-node` / `vite-plugin-vue-devtools` 已清理，别再顺手装回来。
 
@@ -122,6 +130,8 @@
 - 历史：导航栏「历史」页，两个标签页分别列历史与书签；记打开过的书（含页码 / 总页数）与打开过的书库，云端同步（4 秒防抖增量推送，离开阅读页立即推）；历史与书签卡片都显示「书库名 / 路径」，可单条删除、可清空
 - 书签：阅读页悬浮菜单与点击区域动作都能加 / 取消当前页书签，书签可点了直接跳到那本书那一页
 - 滚动条：全局统一成细圆角半透明滑块（`src/assets/scrollbar.css`），两个抽屉改用 naive 滚动条
+- 阅读边距：设置 → 阅读 → 「阅读边距」可调上/下/左/右（0–48px，默认 8/8/8/8）与瀑布流图片间距（0–48px，默认 6），瀑布流与单页都生效，改完 500ms 防抖写云端（`paddingTop/Bottom/Left/Right`、`imageGap`，旧的 `padding` / `pageMargin` 只做一次迁移读取）
+- 书架快捷滚动：右下角悬浮两个按钮（回到顶部 / 滚到底部），`FileListItem2` 通过 `defineExpose` 暴露 `scrollToTop/scrollToBottom/snapshot`
 - 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
 - 安全：`/file`、`/view/*` 全部限制在书库根内
 
