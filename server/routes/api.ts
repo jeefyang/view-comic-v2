@@ -12,8 +12,6 @@ import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
 import { resolveInsideRoot } from '../utils/pathSafe.js';
 import { getThumbBuffer, ThumbBusyError } from '../utils/thumb.js';
-import stream from "stream";
-import { Readable } from "stream";
 
 const router: Router = Router();
 
@@ -22,43 +20,85 @@ useUserApi(router);
 useLibraryApi(router);
 useViewApi(router);
 
-const getLimitStream = (o: {
-    fileStream?: fs.ReadStream,
-    zipStream?: NodeJS.ReadableStream;
-    maxLimit: number;
-}) => {
-    let bytesSent = 0;
-    const limiterStream = new stream.PassThrough({
-        // 当有数据要通过时触发
-        transform(chunk, encoding, callback) {
-            // 如果已经达到或超过限制，直接停止
-            if (bytesSent >= o.maxLimit) {
-                // 销毁上游的 sourceStream，停止从压缩包读取数据
-                // curStream.destroy();
-                if (o.fileStream) {
-                    o.fileStream.destroy();
-                }
-                if (o.zipStream) {
-                    o.zipStream.pause();
-                    o.zipStream.unpipe();
-                }
+interface ByteRange {
+    start: number;
+    end: number;
+}
 
-                // 结束当前的 limiterStream
-                this.push(null);
-                return;
-            }
-
-            // 计算当前这个 chunk 有多少字节是可以发送的
-            const bytesToSend = Math.min(chunk.length, o.maxLimit - bytesSent);
-
-            // 只推送允许发送的那部分数据
-            this.push(chunk.slice(0, bytesToSend));
-            bytesSent += bytesToSend;
-
-            callback();
+/**
+ * 解析单段 `Range: bytes=start-end`。
+ * - 没有 Range 头：返回 undefined（按完整内容发）
+ * - 语法错误 / 越界：返回 "invalid"（回 416）
+ *
+ * 以前这里用的是「把上游流截断到 N 字节」的写法，但状态码还是 200，
+ * 浏览器会把这个残缺响应当成完整内容缓存（还带着 immutable），
+ * 之后 <img> 命中缓存只能拿到前 64KB —— 渐进式 JPEG 于是显示成
+ * 完整尺寸的一团糊图。Range 必须按 HTTP 语义回 206 + Content-Range。
+ */
+const parseRange = (header: string | undefined, size: number): ByteRange | "invalid" | undefined => {
+    if (!header) {
+        return undefined;
+    }
+    const matched = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+    if (!matched) {
+        return "invalid";
+    }
+    const startStr = matched[1];
+    const endStr = matched[2];
+    if (startStr === "" && endStr === "") {
+        return "invalid";
+    }
+    let start: number;
+    let end: number;
+    if (startStr === "") {
+        // 后缀范围 bytes=-N：最后 N 个字节
+        const suffix = parseInt(endStr, 10);
+        if (!Number.isFinite(suffix) || suffix <= 0) {
+            return "invalid";
         }
-    });
-    return limiterStream;
+        start = Math.max(0, size - suffix);
+        end = size - 1;
+    }
+    else {
+        start = parseInt(startStr, 10);
+        end = endStr === "" ? size - 1 : parseInt(endStr, 10);
+    }
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || start >= size) {
+        return "invalid";
+    }
+    end = Math.min(end, size - 1);
+    if (end < start) {
+        return "invalid";
+    }
+    return { start, end };
+};
+
+/** 按范围把可读流写回响应：有 Range 回 206 + Content-Range，没有就回 200 + Content-Length */
+const sendStream = (res: any, o: {
+    size: number;
+    contentType: string;
+    rangeHeader?: string;
+    open: (start: number, end: number) => NodeJS.ReadableStream;
+}) => {
+    res.setHeader("Content-Type", o.contentType);
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    const range = parseRange(o.rangeHeader, o.size);
+    if (range === "invalid") {
+        res.setHeader("Content-Range", `bytes */${o.size}`);
+        res.status(416).end();
+        return;
+    }
+    if (!range) {
+        res.setHeader("Content-Length", String(o.size));
+        res.status(200);
+        o.open(0, o.size - 1).pipe(res);
+        return;
+    }
+    res.setHeader("Content-Range", `bytes ${range.start}-${range.end}/${o.size}`);
+    res.setHeader("Content-Length", String(range.end - range.start + 1));
+    res.status(206);
+    o.open(range.start, range.end).pipe(res);
 };
 
 // 文件读取
@@ -92,7 +132,6 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     if (!fs.existsSync(url)) {
         return res.sendStatus(404);
     }
-    const limitRange = req.headers.range ? parseInt(req.headers.range.split('-')[1]) : 0;
     try {
         const stat = fs.statSync(url);
         if (stat.isDirectory()) {
@@ -102,33 +141,22 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
             }
 
             const fileP = path.join(url, data[0]!.list[num].name);
-            res.setHeader("Content-Type", getContentType(fileP));
-            res.setHeader("Accept-Ranges", 'bytes');
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-
-            // res.setHeader("Content-Length", data[0]!.list[num].size);
-            const stream = fs.createReadStream(fileP);
-            // pipeline(stream, res, err => {
-            //     if (err) {
-            //         console.error('读取文件时出错:', err);
-            //     }
-            //     if (!res.headersSent) {
-            //         res.status(500).send('传输中断');
-            //     }
-            // });
-            if (limitRange) {
-
-                const limitStream = getLimitStream({ maxLimit: limitRange, fileStream: stream });
-                stream.pipe(limitStream).pipe(res);
-            }
-            else {
-                stream.pipe(res);
-            }
-
-            stream.on('error', (err) => {
-                console.error('读取文件时出错:', err);
+            const fileSize = fs.statSync(fileP).size;
+            sendStream(res, {
+                size: fileSize,
+                contentType: getContentType(fileP),
+                rangeHeader: req.headers.range,
+                open: (start, end) => {
+                    const fileStream = fs.createReadStream(fileP, { start, end });
+                    fileStream.on('error', (err) => {
+                        console.error('读取文件时出错:', err);
+                        if (!res.headersSent) {
+                            res.status(500).end();
+                        }
+                    });
+                    return fileStream;
+                }
             });
-
         }
         else {
             const extData = getFileExt(url);
@@ -137,19 +165,21 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
             // node-stream-zip 会拿 JPEG 当 zip 解析并抛 `Bad archive`，
             // 它是个未捕获的 'error' 事件，会把整个进程带下去（列表/缩略图/图片全部连带 404）。
             if (extData.extType !== "zip") {
-                res.setHeader("Content-Type", getContentType(url));
-                res.setHeader("Accept-Ranges", 'bytes');
-                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-                const fileStream = fs.createReadStream(url);
-                fileStream.on('error', (err) => {
-                    console.error('读取文件时出错:', err);
+                sendStream(res, {
+                    size: stat.size,
+                    contentType: getContentType(url),
+                    rangeHeader: req.headers.range,
+                    open: (start, end) => {
+                        const fileStream = fs.createReadStream(url, { start, end });
+                        fileStream.on('error', (err) => {
+                            console.error('读取文件时出错:', err);
+                            if (!res.headersSent) {
+                                res.status(500).end();
+                            }
+                        });
+                        return fileStream;
+                    }
                 });
-                if (limitRange) {
-                    fileStream.pipe(getLimitStream({ maxLimit: limitRange, fileStream })).pipe(res);
-                }
-                else {
-                    fileStream.pipe(res);
-                }
                 return;
             }
             const data = await getMyStreamZip(url);
@@ -159,23 +189,20 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
                 return res.status(500).send('压缩包无法读取');
             }
             const obj = data[0]!;
-            res.setHeader("Content-Type", getContentType(obj.fileList[num].name));
-            res.setHeader("Accept-Ranges", 'bytes');
-            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-
+            const entry = obj.fileList[num];
             const stream = await obj.getFileByIndex(num);
             if (!stream) {
                 return res.sendStatus(404);
             }
-            // stream.pipe(res);
-            if (limitRange) {
-
-                const limitStream = getLimitStream({ maxLimit: limitRange, zipStream: stream });
-                stream.pipe(limitStream).pipe(res);
-            }
-            else {
-                stream.pipe(res);
-            }
+            // node-stream-zip 只能把整条解压出来，做不了字节切片；这里忽略 Range，
+            // 回 200 + 完整内容（HTTP 允许服务端忽略 Range，客户端会接受 200 的全量响应）。
+            // 关键是绝不能截断后还回 200 —— 那会被浏览器当成完整内容长期缓存。
+            res.setHeader("Content-Type", getContentType(entry.name));
+            res.setHeader("Accept-Ranges", 'bytes');
+            res.setHeader("Content-Length", String(entry.size));
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            res.status(200);
+            stream.pipe(res);
             stream.on('end', () => {
                 obj.finishStream();
             });
