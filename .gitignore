@@ -43,4 +43,4 @@ data
 test
 
 ecosystem.config.cjs
-logs/
+logs/.git-commit-msg.txt
