@@ -38,16 +38,31 @@ if (process.env.NODE_ENV !== 'development') {
      * 而 helmet 默认的 `img-src 'self' data:` 里 `'self'` 并不匹配 blob: 协议，
      * 浏览器会直接拒绝加载（图片能拿到、但显示成 alt 文字），换浏览器也一样。
      * 同理连接 blob: 走的是 connect-src。
+     *
+     * HTTPS 开关：helmet 默认还带 `upgrade-insecure-requests`、HSTS、COOP 三个头，
+     * 它们只在 HTTPS 下成立。用 http://ip:端口 访问时，`upgrade-insecure-requests`
+     * 会让浏览器把 /assets/*.js 这类子资源自动改写成 https://，TLS 连不上 → 整站白屏
+     * （控制台还会报一句 COOP 被忽略，因为来源不可信）。
+     * 所以默认按「HTTP 直连」处理：关掉这三个头；真要上 HTTPS（反代或自带证书）时，
+     * 在 .env 里写 HTTPS=1，它们会自动恢复。
      */
+    const secureDeploy = /^(1|true|yes|on)$/i.test(process.env.HTTPS ?? "");
+    const cspDirectives: Record<string, Iterable<string> | null> = {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        "img-src": ["'self'", "data:", "blob:"],
+        "media-src": ["'self'", "data:", "blob:"],
+        "connect-src": ["'self'", "blob:"]
+    };
+    if (!secureDeploy) {
+        // null 表示不输出这条指令
+        cspDirectives["upgrade-insecure-requests"] = null;
+    }
     app.use(helmet({
         contentSecurityPolicy: {
-            directives: {
-                ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-                "img-src": ["'self'", "data:", "blob:"],
-                "media-src": ["'self'", "data:", "blob:"],
-                "connect-src": ["'self'", "blob:"]
-            }
-        }
+            directives: cspDirectives
+        },
+        strictTransportSecurity: secureDeploy ? undefined : false,
+        crossOriginOpenerPolicy: secureDeploy ? undefined : false
     }));
 }
 
