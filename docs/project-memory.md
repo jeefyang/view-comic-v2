@@ -88,6 +88,14 @@
 - 入口：悬浮菜单 `floatActions.ts` 的 `toggleBookmark`（label 由 `floatActionLabel(key, bookmarked)` 决定，`FloatActions.vue` 接 `bookmarked` prop）与点击区域动作 `tapZones/actions.ts` 的 `toggleBookmark`，两处都调 `readerView.vue` 的 `toggleBookmarkOfPage()`（同页已有书签就删、没有就加）。
 - 点击区域布局也走单布局增量：`tapZones/layouts.ts` 的 `patchLayout(name, zones?)` 取代了原来的整包 `putLayouts()`；`saveLayoutAs()` 传 `op: "set"`，`removeLayout()` 传 `op: "remove"`。
 
+### 书架页
+- 滚动位置记忆在 `src/views/shelf/components/FileListItem2.vue`：`scrollMemo: Map<目录路径, { name, offset }>`，`snapshot()` 用 `VirtualList` 的 `getScrollState()` 拿首个可见项的**名字**（不用下标，目录重新加载后下标会变）+ 像素偏移存在当前路径下；`restore()` 用 `findIndex(item => item.name === memo.name)` 找回位置再 `restorePosition(index, offset)`，同名条目不存在就留在顶部。
+- 这个 watcher 必须写成 `watch(() => pathKey(), (next, prev) => snapshot(prev), { flush: "sync" })`：`updateShelfFolder()` 是「先清空列表再请求」，watcher 若走默认的异步时机，执行时 `getScrollState()` 已经拿不到东西了。
+- 恢复时机有四处：`watch(shelfFileList, restore, { flush: "post" })`、`onMounted` + `nextTick`、`onActivated`（从阅读页回来）、进目录前的 `toClick()` 里先 `snapshot()`。
+- `containerHeight` 用 `useElementSize(parentRef)` 的高度直接给，**不要再回到 `setTimeout` 量高 + `key = nanoid()` 重挂列表**的老写法（重挂会把滚动位置一起丢掉）。
+- 书架顶栏与列表状态都在 `src/views/shelf/shelfView.vue`：`libraryName` / `atRoot` 两个 computed 供面包屑与按钮禁用态使用；`shelfLoading` 为真时渲染 6 条 `n-skeleton`，只有「不在加载且列表为空」才显示 `n-empty`。
+- 排序 / 过滤 / 搜索词虽然一直在 `viewStore.save()` 的 `returnData` 里，但过去只有换书库、开书时才调 `save()` → 现在 `sortShelfFileList()` 末尾自己调一次 `save()`，改完偏好立刻生效并持久化。
+
 ## 约定与陷阱
 
 - **生产环境的 CSP 必须放行 `blob:`**：`server/index.ts` 只在 `NODE_ENV !== 'development'` 时才 `app.use(helmet(...))`，helmet 默认 CSP 是 `img-src 'self' data:`，而 `'self'` **不匹配 `blob:` 协议**；缩略图恰好是 `fetch → URL.createObjectURL → <img src="blob:...">`，于是打包版整面灰块、图位显示 `alt` 文字，开发版却完全正常（dev 的 HTML 由 Vite 中间件返回，helmet 只作用在 `/api` 响应上）。现在 `img-src` / `media-src` / `connect-src` 都显式带了 `blob:`，改动见 `server/index.ts`。
@@ -101,6 +109,7 @@
 - 纯 CSS 的 `<style scoped>` 里不能用 `//` 注释（会报 `Unknown word`）。
 - `#main` 是定高 + `overflow: hidden` 的弹性容器，页面内容超一屏要自己开滚动区（参考 `settingsView.vue` 的 `.parent`：`height: 100%; min-height: 0; overflow-y: auto;` + 隐藏滚动条）。
 - **滚动条统一走 `src/assets/scrollbar.css`**（在 `main.css` 之后引入）：全局 `*` 规则统一成 8px、圆角 999px、半透明灰滑块、轨道透明，Firefox 用 `scrollbar-width: thin` + `scrollbar-color` 两套写法都要留。naive-ui 自带的 `n-scrollbar` 不用 CSS 类而用 `--n-scrollbar-*` 变量，且这些变量内联写在元素上 → 只能靠 `.n-scrollbar { --n-scrollbar-color: ... !important }` 覆盖。抽屉（`n-drawer-content`）要加 `:native-scrollbar="false"` 才会用这套；书架列表、`VirtualList`、瀑布流、设置页仍刻意隐藏滚动条，它们的选择器优先级高于全局 `*` 规则，别一起改掉。
+- **换行符不统一**：`src/views/shelf/shelfView.vue` 等文件是 CRLF，而 `docs/project-memory.md` 是 LF。`edit` 工具的多行 `old_string` 在 CRLF 文件里经常匹配不上（不是文本不对，是换行不同），改用单行锚点，或用 PowerShell 的 `Get-Content -Raw` + `Set-Content -NoNewline` 追加整段。
 - 依赖只留用得上的：`adm-zip` / `fflate` / `iconv-lite` / `yauzl` / `tsx` / `vite-plugin-inspect` / `vite-plugin-node` / `vite-plugin-vue-devtools` 已清理，别再顺手装回来。
 
 ## 已实现的功能面
@@ -109,7 +118,7 @@
 - 加载体验：每页加载占位（转圈 / 慢网提示 / 失败点击重试，自动重试 2 次）；慢网（2G/3G）自动降低预加载与并发
 - 点击区域：可拖拽 / 八向改大小 / 2% 吸附；动作含翻页、切 UI、设置、跳页、返回书架 / 书库、切换适配方式；预设布局；布局上传到个人账户（`userConfig.tapZoneLayouts`，同名覆盖）
 - 设置页：阅读 / 翻页 / 账号 / 数据四个标签；阅读设置另有半屏抽屉
-- 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先
+- 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先；顶栏面包屑第一格是书库名（点回 `/library`），根目录显示「根目录」且回根 / 返上一级按钮置灰；加载时出骨架屏而非空态；按钮组右侧显示「共 N 项」；滚动位置按目录记忆（离开再回来、进出子目录都停在原位）；排序 / 过滤 / 搜索词会落盘
 - 历史：导航栏「历史」页，两个标签页分别列历史与书签；记打开过的书（含页码 / 总页数）与打开过的书库，云端同步（4 秒防抖增量推送，离开阅读页立即推）；历史与书签卡片都显示「书库名 / 路径」，可单条删除、可清空
 - 书签：阅读页悬浮菜单与点击区域动作都能加 / 取消当前页书签，书签可点了直接跳到那本书那一页
 - 滚动条：全局统一成细圆角半透明滑块（`src/assets/scrollbar.css`），两个抽屉改用 naive 滚动条
@@ -120,5 +129,5 @@
 
 - 那 7 个历史类型错误还在，`pnpm build:check` 会因此失败（`pnpm build` 不受影响）
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
-- 书架排序偏好未持久化（刷新回默认）；`rar` 仍被当普通文件处理
+- `rar` 仍被当普通文件处理（书架排序 / 过滤 / 搜索词已持久化，别再当待办）
 - 视频文件只做了类型角标，未取首帧缩略图

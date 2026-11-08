@@ -1,7 +1,6 @@
 <template>
     <div style="flex: 1" ref="parentRef">
-        <!-- <div>123</div> -->
-        <VirtualList ref="vListRef" :list-data="viewStore.shelfFileList" :containerHeight="containerHeight" :estimated-item-height="96" :key="key">
+        <VirtualList ref="vListRef" :list-data="viewStore.shelfFileList" :containerHeight="containerHeight" :estimated-item-height="96">
             <template #default="{ item }">
                 <FileItem :item="item" class="mb-2" @click="toClick"></FileItem>
             </template>
@@ -12,8 +11,7 @@
 <script setup lang="ts">
 import VirtualList, { type VirtualListInstance } from "@/components/VirtualList.vue";
 import { useViewStore } from "@/stores/view";
-import { onMounted, ref, watch, useTemplateRef, onActivated } from "vue";
-import { nanoid } from "nanoid";
+import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, useTemplateRef, watch } from "vue";
 import FileItem from "./FileItem.vue";
 import { useElementSize } from "@vueuse/core";
 import { useMessage } from "naive-ui";
@@ -26,22 +24,75 @@ const vListRef = useTemplateRef<VirtualListInstance>(null);
 
 const msg = useMessage();
 
-const key = ref(nanoid(8));
+/**
+ * 每个目录记一份滚动位置：{ 第一个可见项的名字, 项内偏移 }。
+ * 只放在内存里 —— 目录重新加载后下标可能变，用名字定位更稳。
+ */
+const scrollMemo = new Map<string, { name: string; offset: number }>();
+const pathKey = (path = viewStore.shelfPath) => path.join("/");
 
-const init = () => {
-    if (!parentRef.value) {
+/** 把当前滚动位置记到某个路径下（key 省略时用当前路径） */
+const snapshot = (key = pathKey()) => {
+    const state = vListRef.value?.getScrollState();
+    if (!state) {
         return;
     }
-    containerHeight.value = 10;
-    setTimeout(() => {
-        const div = parentRef.value;
-        containerHeight.value = div.getBoundingClientRect().height;
-        key.value = nanoid(8);
-    }, 10);
+    const item = viewStore.shelfFileList[state.index];
+    if (!item) {
+        return;
+    }
+    scrollMemo.set(key, { name: item.name, offset: state.offset });
 };
+
+/** 回到某个路径时恢复滚动位置（找不到同名条目就留在顶部） */
+const restore = async (key = pathKey()) => {
+    const memo = scrollMemo.get(key);
+    if (!memo) {
+        return;
+    }
+    const index = viewStore.shelfFileList.findIndex((item) => item.name === memo.name);
+    if (index < 0) {
+        return;
+    }
+    await nextTick();
+    await vListRef.value?.restorePosition(index, memo.offset);
+};
+
+// 容器尺寸变了只改高度，不再重建列表（重建必然丢滚动位置）
+const { height } = useElementSize(parentRef);
+watch(
+    height,
+    (value) => {
+        if (value > 0) {
+            containerHeight.value = value;
+        }
+    },
+    { immediate: true }
+);
+
+// 换目录：用 sync 抢在 updateShelfFolder 清空列表之前把位置记下来
+watch(
+    () => pathKey(),
+    (_next, prev) => {
+        if (prev !== undefined) {
+            snapshot(prev);
+        }
+    },
+    { flush: "sync" }
+);
+
+// 新列表就位后恢复滚动位置
+watch(
+    () => viewStore.shelfFileList,
+    () => {
+        void restore();
+    },
+    { flush: "post" }
+);
 
 const toClick = async (item: ViewFileType) => {
     if (item.isDir) {
+        snapshot();
         viewStore.shelfPath.push(item.name);
         viewStore.updateShelfFolder();
         return;
@@ -62,13 +113,6 @@ const toClick = async (item: ViewFileType) => {
 };
 
 watch(
-    () => viewStore.shelfFileList,
-    () => {
-        init();
-    }
-);
-
-watch(
     () => viewStore.shelfJumpName,
     (name) => {
         if (!name) {
@@ -81,13 +125,17 @@ watch(
 );
 
 onMounted(() => {
-    init();
-    const { width, height } = useElementSize(parentRef);
-    watch(
-        () => [width.value, height.value],
-        ([newWidth, newHeight]) => {
-            init();
-        }
-    );
+    void nextTick(() => restore());
+});
+
+// 去阅读页 / 切标签页回来时，列表没被重建，直接恢复位置
+onActivated(() => {
+    void restore();
+});
+onDeactivated(() => {
+    snapshot();
+});
+onBeforeUnmount(() => {
+    snapshot();
 });
 </script>

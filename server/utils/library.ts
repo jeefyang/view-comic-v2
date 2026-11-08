@@ -95,6 +95,7 @@ export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any]
     if (target.newName) {
         item.name = target.newName;
     }
+    const pathChanged = !!target.pathUrl && target.pathUrl !== libCache[index].pathUrl;
     if (target.pathUrl) {
         item.pathUrl = target.pathUrl;
     }
@@ -102,7 +103,11 @@ export function editLib(target: EditLibraryType): [JsonLibrary | undefined, any]
         item.groupList = target.groupList;
     }
     item.modifyTime = new Date().getTime();
-    item.editUUID = nanoid(8);
+    // editUUID 是阅读进度、历史、书签认书的凭据：只有换路径（内容变了）才重新生成，
+    // 改名、改分组、重新扫描都必须保持不变，否则用户的进度会凭空丢失。
+    if (!item.editUUID || pathChanged) {
+        item.editUUID = nanoid(8);
+    }
     libCache[index] = item;
     updateLibs();
     return [item, undefined];

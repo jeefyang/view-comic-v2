@@ -132,6 +132,8 @@ export const useViewStore = defineStore('view', () => {
         // 正序：文件夹在前；反序：整个列表倒转，文件夹排到最后（同资源管理器里按「反序」排完的样子）
         shelfFileList.value = shelfSortValue.value == 1 ? [...dirs, ...files] : [...files, ...dirs];
         shelfScrollName.value = "";
+        // 排序方式 / 过滤类型 / 搜索词都变了，顺手落盘，下次进书架还是这套偏好
+        save();
         return [...shelfFileList.value];
     };
 
@@ -148,9 +150,12 @@ export const useViewStore = defineStore('view', () => {
         if (res.code == 200) {
             const json = res.data;
             const index = libraryList.value.findIndex(item => item.uuid == json.uuid);
-            libraryList.value[index] = json;
+            if (index != -1) {
+                libraryList.value[index] = json;
+            }
+            // 当前书库被重新扫描：就地更新，别清空（清空会让书架/阅读页以为没选书库）
             if (json.uuid == curLibrary.value?.uuid) {
-                curLibrary.value = {};
+                curLibrary.value = json;
             }
         }
         save();
@@ -160,13 +165,13 @@ export const useViewStore = defineStore('view', () => {
     const removeLibrary = async (item: JsonLibrary) => {
         const res = await libraryFetch.request("remove", { uuid: item.uuid });
         if (res.code == 200) {
-            const json = res.data;
-            const index = libraryList.value.findIndex(item => item.uuid == json.uuid);
+            // 先记「删的是不是当前书库」，再 splice：反过来查一定查不到
+            const isCurrent = item.uuid == curLibrary.value?.uuid;
+            const index = libraryList.value.findIndex(lib => lib.uuid == item.uuid);
             if (index != -1) {
                 libraryList.value.splice(index, 1);
             }
-            const curIndex = libraryList.value.findIndex(item => item.uuid == curLibrary.value?.uuid);
-            if (curIndex != -1) {
+            if (isCurrent) {
                 curLibrary.value = {};
             }
         }

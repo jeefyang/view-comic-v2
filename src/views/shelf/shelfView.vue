@@ -7,17 +7,19 @@
     <template v-else>
         <n-flex vertical style="height: 100%">
             <n-flex align="center" style="gap: 0" :style="{ border: `1px solid ${themeVars.borderColor}` }">
-                <n-button @click="toHome">
+                <n-button quaternary :disabled="atRoot" title="回到根目录" @click="toHome">
                     <n-icon>
                         <HomeOutline></HomeOutline>
                     </n-icon>
                 </n-button>
                 <n-flex style="flex: 1; flex-wrap: nowrap; overflow: auto; scrollbar-width: none">
                     <n-breadcrumb>
+                        <n-breadcrumb-item @click="toLibrary">{{ libraryName }}</n-breadcrumb-item>
                         <n-breadcrumb-item v-for="(item, index) in viewStore.shelfPath" :key="index" @click="toSelectPath(index)">{{ item }}</n-breadcrumb-item>
+                        <n-breadcrumb-item v-if="atRoot">根目录</n-breadcrumb-item>
                     </n-breadcrumb>
                 </n-flex>
-                <n-button @click="toBack">
+                <n-button quaternary :disabled="atRoot" title="返回上一级" @click="toBack">
                     <n-icon> <ArrowBack></ArrowBack> </n-icon>
                 </n-button>
             </n-flex>
@@ -26,17 +28,23 @@
                 <n-button type="primary" @click="runSearch"> 搜索 </n-button>
                 <n-input v-model:value="viewStore.shelfSearchKey" :style="{ width: '100%' }" placeholder="请输入关键字" clearable @keyup.enter="runSearch" />
             </n-input-group>
-            <n-button-group>
-                <n-button type="success" @click="toggleSortValue">{{ viewStore.shelfSortValue == 1 ? "正序" : "反序" }}</n-button>
-                <n-dropdown trigger="click" :options="sortNameOptions" @select="toSelectSortType">
-                    <n-button type="info">{{ sortNameList[viewStore.shelfSortType] }}</n-button>
-                </n-dropdown>
-                <n-dropdown trigger="click" :options="includeOptions" @select="toSelectIncludeType">
-                    <n-button type="warning">{{ includeList[viewStore.shelfIncludeType] }}</n-button>
-                </n-dropdown>
-                <n-button @click="toUpdate" :loading="viewStore.shelfLoading">刷新</n-button>
-            </n-button-group>
-            <n-flex v-if="viewStore.shelfFileList.length" vertical style="flex: 1; min-height: 0">
+            <n-flex align="center" style="gap: 8px">
+                <n-button-group>
+                    <n-button type="success" @click="toggleSortValue">{{ viewStore.shelfSortValue == 1 ? "正序" : "反序" }}</n-button>
+                    <n-dropdown trigger="click" :options="sortNameOptions" @select="toSelectSortType">
+                        <n-button type="info">{{ sortNameList[viewStore.shelfSortType] }}</n-button>
+                    </n-dropdown>
+                    <n-dropdown trigger="click" :options="includeOptions" @select="toSelectIncludeType">
+                        <n-button type="warning">{{ includeList[viewStore.shelfIncludeType] }}</n-button>
+                    </n-dropdown>
+                    <n-button @click="toUpdate" :loading="viewStore.shelfLoading">刷新</n-button>
+                </n-button-group>
+                <div class="list-count">共 {{ viewStore.shelfFileList.length }} 项</div>
+            </n-flex>
+            <n-flex v-if="viewStore.shelfLoading" vertical style="flex: 1; min-height: 0; overflow: hidden">
+                <n-skeleton v-for="i in 6" :key="i" height="76px" :sharp="false" style="margin-bottom: 8px; border-radius: 6px" />
+            </n-flex>
+            <n-flex v-else-if="viewStore.shelfFileList.length" vertical style="flex: 1; min-height: 0">
                 <FileListItem2></FileListItem2>
             </n-flex>
             <n-flex v-else style="flex: 1" justify="center" align="center">
@@ -66,6 +74,17 @@ const router = useRouter();
 const msg = useMessage();
 
 const isEmpty = ref(true);
+
+/** 顶栏面包屑第一格显示当前书库名，点它回书库列表 */
+const libraryName = computed(() => viewStore.curLibrary?.name || "书库");
+const atRoot = computed(() => viewStore.shelfPath.length === 0);
+
+const toLibrary = () => {
+    if (isBusy()) {
+        return;
+    }
+    router.push({ path: "/library" });
+};
 const sortNameList = ref(<{ [x in SortNameType]: string }>{
     createTime: "创建时间",
     extension: "扩展名",
@@ -218,3 +237,12 @@ onActivated(() => {
     checkLibrary();
 });
 </script>
+
+<style scoped>
+.list-count {
+    font-size: 0.72rem;
+    opacity: 0.5;
+    margin-left: auto;
+    white-space: nowrap;
+}
+</style>

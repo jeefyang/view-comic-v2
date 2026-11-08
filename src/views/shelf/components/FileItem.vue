@@ -15,16 +15,9 @@
                 <div class="thumb-kind" :class="`is-${kind}`">{{ kindLabel }}</div>
             </div>
 
-            <n-flex vertical style="flex: 1">
-                <n-flex>{{ props.item.name }}</n-flex>
-                <n-flex justify="space-between">
-                    <div style="font-size: 0.7rem" :style="{ color: themeVars.borderColor }">大小:{{ props.item.sizeStr }}</div>
-                    <div style="font-size: 0.7rem" :style="{ color: themeVars.borderColor }">创建:{{ props.item.createTime }}</div>
-                </n-flex>
-                <n-flex justify="space-between">
-                    <div style="font-size: 0.7rem" :style="{ color: themeVars.borderColor }">类型:{{ kindLabel }}<span v-if="props.item.ext"> · {{ props.item.ext }}</span></div>
-                    <div style="font-size: 0.7rem" :style="{ color: themeVars.borderColor }">修改:{{ props.item.updateTime }}</div>
-                </n-flex>
+            <n-flex vertical style="flex: 1; min-width: 0; gap: 4px">
+                <div class="name" :title="props.item.name">{{ props.item.name }}</div>
+                <div class="meta" :title="metaTitle">{{ metaText }}</div>
             </n-flex>
         </n-flex>
     </n-card>
@@ -109,9 +102,47 @@ const KIND_LABELS: Record<ItemKind, string> = {
 };
 
 const kindLabel = computed(() => KIND_LABELS[kind.value]);
+
+/** 第二行只放最常看的两项：文件夹看创建时间，文件看大小 + 修改时间 */
+const metaText = computed(() => {
+    const item = props.item;
+    if (item.isDir) {
+        return `文件夹 · ${item.createTime || "—"}`;
+    }
+    return `${item.sizeStr || "—"} · ${item.updateTime || "—"}`;
+});
+
+/** 其余信息（类型/扩展名/创建时间）收进 title，鼠标悬停能看到 */
+const metaTitle = computed(() => {
+    const item = props.item;
+    const lines = [`类型：${kindLabel.value}${item.ext ? ` · ${item.ext}` : ""}`];
+    if (!item.isDir) {
+        lines.push(`大小：${item.sizeStr || "—"}`);
+        lines.push(`创建：${item.createTime || "—"}`);
+        lines.push(`修改：${item.updateTime || "—"}`);
+    }
+    return lines.join("\n");
+});
 </script>
 
 <style scoped>
+.name {
+    font-size: 0.95rem;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.meta {
+    font-size: 0.7rem;
+    opacity: 0.55;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
 .thumb-box {
     position: relative;
     width: 5rem;
