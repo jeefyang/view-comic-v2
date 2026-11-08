@@ -76,7 +76,11 @@ export const loadLayouts = async (force = false): Promise<Record<string, TapZone
     return tapZoneLayouts.value;
 };
 
-const putLayouts = async (next: Record<string, TapZone[]>): Promise<boolean> => {
+/**
+ * 单个布局的增量写入：保存一个布局只发这一个，不再把所有布局整包上传。
+ * `zones` 省略表示删除该名字。
+ */
+const patchLayout = async (name: string, zones?: TapZone[]): Promise<boolean> => {
     const configStore = useConfigStore();
     if (!configStore.isLogin) {
         layoutsError.value = "登录后才能同步云端布局";
@@ -84,15 +88,17 @@ const putLayouts = async (next: Record<string, TapZone[]>): Promise<boolean> => 
     }
     layoutsBusy.value = true;
     try {
-        const res = await userFetch.request("setUserConfig", {
+        const res = await userFetch.request("patchTapZoneLayout", {
             userUUID: configStore.userUUID,
-            tapZoneLayouts: next
+            op: zones ? "set" : "remove",
+            name,
+            zones
         });
         if (res.code != 200) {
             layoutsError.value = res.msg || "保存到云端失败";
             return false;
         }
-        tapZoneLayouts.value = normalizeLayouts(res.data?.tapZoneLayouts ?? next);
+        tapZoneLayouts.value = normalizeLayouts(res.data?.tapZoneLayouts);
         layoutsLoaded.value = true;
         loadedUserUUID = configStore.userUUID;
         layoutsError.value = "";
@@ -120,8 +126,7 @@ export const saveLayoutAs = async (name: string, zones?: TapZone[]): Promise<boo
         layoutsError.value = "当前没有可上传的点击区域";
         return false;
     }
-    const next = { ...tapZoneLayouts.value, [key]: cloneTapZones(source) };
-    return await putLayouts(next);
+    return await patchLayout(key, cloneTapZones(source));
 };
 
 /** 应用云端布局到当前设备（同时写进本机 localStorage） */
@@ -139,7 +144,5 @@ export const removeLayout = async (name: string): Promise<boolean> => {
     if (!(name in tapZoneLayouts.value)) {
         return false;
     }
-    const next = { ...tapZoneLayouts.value };
-    delete next[name];
-    return await putLayouts(next);
+    return await patchLayout(name);
 };

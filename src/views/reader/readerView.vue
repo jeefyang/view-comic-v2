@@ -43,7 +43,12 @@
             <ModeStandbyRound />
         </n-icon>
     </float-btn>
-    <float-actions v-model:show="actionsOpen" :anchor="floatBtnAnchor" @action="onFloatAction" />
+    <float-actions
+        v-model:show="actionsOpen"
+        :anchor="floatBtnAnchor"
+        :bookmarked="!!currentBookmark"
+        @action="onFloatAction"
+    />
     <reader-settings-drawer v-model:show="settingsDrawer" />
 </template>
 
@@ -68,6 +73,17 @@ import { readerSort } from "./readerSort";
 import { indexOfPageName, readerPages } from "./readerPages";
 import { getProgressKey, loadProgress, saveProgress } from "./readerProgress";
 import type { TapActionKey } from "./tapZones/actions";
+import {
+    addBookmark,
+    findBookmark,
+    flushHistory,
+    historyLoaded,
+    loadHistory,
+    removeBookmark,
+    touchHistoryBook,
+    updateHistoryPage,
+} from "@/views/history/historyData";
+import { normalizeBasePath } from "@/utils/fileUrl";
 import { ArrowBackRound, ModeStandbyRound } from "@vicons/material";
 import { useMessage } from "naive-ui";
 
@@ -117,6 +133,22 @@ const progressKey = computed(() => {
 });
 
 const totalPage = computed(() => readerPages.value.length);
+
+/** 这本书在书库里的完整相对路径：压缩包是 `sub/img.zip`，目录书是 `a/b` */
+const currentBookPath = computed(() => normalizeBasePath(viewStore.comicFileList?.basePath || ""));
+
+/** 这本书所在目录，历史里存下来，重开时按它请求 comicViewList */
+const currentParentPath = computed(() => currentBookPath.value.split("/").slice(0, -1).join("/"));
+
+/** 当前页是否已经加过书签，决定悬浮菜单里显示「添加书签」还是「取消书签」 */
+const currentBookmark = computed(() => {
+    const library = viewStore.curLibrary;
+    if (!library?.editUUID || !viewStore.comicFileList?.baseFile) {
+        return undefined;
+    }
+    const pageName = readerPages.value[currentIndex.value]?.name || currentName.value || "";
+    return findBookmark(library.editUUID, currentBookPath.value, pageName, currentIndex.value + 1);
+});
 
 /**
  * 显示在页码上方的文件名：优先当前页的文件名（书架里看到的 img-001.jpg 这种），
@@ -196,6 +228,8 @@ const init = async () => {
         return toHome();
     }
     initPending = true;
+    // 云端历史/书签是异步的，先发起，不挡住阅读；书签按钮真正用到时会再等它
+    void loadHistory();
     /**
      * 只有「本次会话里从书架点了某一页」才按那一页落点。
      * comicFileList.start 会随缓存一起持久化，刷新后它还是上次点开的页，
@@ -216,6 +250,8 @@ const init = async () => {
         currentName.value = readerPages.value[target]?.name ?? "";
         applyJump(target);
         isInit.value = true;
+        // 记一条云端历史（同一本书只更新、顶到最前）
+        recordHistory(target);
     } finally {
         initPending = false;
     }
@@ -259,6 +295,83 @@ const onFileJump = (index: number) => {
     onJump(index);
 };
 
+/**
+ * 书的名字：书库根目录下的书，服务端给的是 baseFile.name="."，存进 store 时被 normalizeFileName 归一成空串，
+ * 这里必须再兜一层——空名字会让 touchHistoryBook 直接放弃，连网络请求都不会发。
+ */
+const bookDisplayName = () =>
+    viewStore.comicFileList?.baseFile?.name || currentBookPath.value.split("/").pop() || "根目录";
+
+/** 把这本书写进云端历史：同一本书只更新一条，并顶到最前 */
+const recordHistory = (index: number) => {
+    const list = viewStore.comicFileList;
+    const library = viewStore.curLibrary;
+    if (!configStore.isLogin || !library?.editUUID || !list?.baseFile) {
+        return;
+    }
+    touchHistoryBook({
+        editUUID: library.editUUID,
+        libraryUUID: library.uuid ?? "",
+        libraryName: library.name ?? "",
+        basePath: currentBookPath.value,
+        parentPath: currentParentPath.value,
+        name: bookDisplayName(),
+        extType: list.baseFile.extType,
+        isDir: !!list.baseFile.isDir,
+        page: index + 1,
+        total: totalPage.value,
+        pageName: readerPages.value[index]?.name ?? "",
+    });
+};
+
+/** 页码变了就更新历史里的进度：只改本地，停手一会儿才由 historyData 统一推云端 */
+const syncHistoryPage = (index: number) => {
+    const library = viewStore.curLibrary;
+    if (!configStore.isLogin || !library?.editUUID) {
+        return;
+    }
+    updateHistoryPage(
+        library.editUUID,
+        currentBookPath.value,
+        index + 1,
+        totalPage.value,
+        readerPages.value[index]?.name ?? ""
+    );
+};
+
+/** 悬浮菜单与点击区域共用：当前页有书签就取消，没有就加 */
+const toggleBookmarkOfPage = async () => {
+    const list = viewStore.comicFileList;
+    const library = viewStore.curLibrary;
+    if (!library?.editUUID || !list?.baseFile) {
+        return;
+    }
+    // 还没从云端拉过书签时先拉一次，避免用空列表把云端书签覆盖掉
+    if (!historyLoaded.value) {
+        await loadHistory();
+    }
+    const pageName = readerPages.value[currentIndex.value]?.name || currentName.value || "";
+    const existing = findBookmark(library.editUUID, currentBookPath.value, pageName, currentIndex.value + 1);
+    if (existing) {
+        removeBookmark(existing.id);
+        msg.success("已取消书签");
+        return;
+    }
+    addBookmark({
+        editUUID: library.editUUID,
+        libraryUUID: library.uuid ?? "",
+        libraryName: library.name ?? "",
+        basePath: currentBookPath.value,
+        parentPath: currentParentPath.value,
+        name: bookDisplayName(),
+        extType: list.baseFile.extType,
+        isDir: !!list.baseFile.isDir,
+        page: currentIndex.value + 1,
+        pageName,
+    });
+    msg.success(`已添加书签：第 ${currentIndex.value + 1} 页`);
+};
+
 let saveTimer: any;
 /** 上一次记录的进度 key，用于识别刚切换到另一本书的情况 */
 let lastProgressKey = "";
@@ -290,6 +403,14 @@ watch([currentIndex, progressKey], () => {
         saveTimer = undefined;
         saveProgress(progressKey.value, currentIndex.value, totalPage.value, currentName.value);
     }, 300);
+});
+
+/** 翻页时同步历史里的进度：写的是本地列表，停手一会儿才由 historyData 推云端 */
+watch([currentIndex, progressKey], () => {
+    if (!isInit.value) {
+        return;
+    }
+    syncHistoryPage(currentIndex.value);
 });
 
 /**
@@ -348,6 +469,10 @@ const onFloatAction = (key: FloatActionKey) => {
     }
     if (key === "jumpPage") {
         showJump.value = true;
+        return;
+    }
+    if (key === "toggleBookmark") {
+        void toggleBookmarkOfPage();
     }
 };
 
@@ -372,6 +497,10 @@ const onReaderAction = (key: TapActionKey) => {
     }
     if (key === "jumpPage") {
         showJump.value = true;
+        return;
+    }
+    if (key === "toggleBookmark") {
+        void toggleBookmarkOfPage();
     }
 };
 
@@ -379,9 +508,15 @@ onActivated(() => {
     init();
 });
 
+/** 离开阅读页：进度与云端历史都立刻落盘 */
+const flushAll = () => {
+    flushProgress();
+    void flushHistory();
+};
+
 onDeactivated(() => {
     // 离开 reader 时立刻落盘，避免防抖窗口内的滚动丢失
-    flushProgress();
+    flushAll();
     actionsOpen.value = false;
     settingsDrawer.value = false;
 });
@@ -389,17 +524,17 @@ onDeactivated(() => {
 /** 刷新 / 切到后台 / 关标签页时立刻落盘，避免 300ms 防抖窗口内的位置丢失 */
 const onVisibilityChange = () => {
     if (document.visibilityState === "hidden") {
-        flushProgress();
+        flushAll();
     }
 };
 
 onMounted(() => {
-    window.addEventListener("pagehide", flushProgress);
+    window.addEventListener("pagehide", flushAll);
     document.addEventListener("visibilitychange", onVisibilityChange);
 });
 
 onBeforeUnmount(() => {
-    window.removeEventListener("pagehide", flushProgress);
+    window.removeEventListener("pagehide", flushAll);
     document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 </script>

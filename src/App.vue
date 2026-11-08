@@ -49,6 +49,7 @@ const isDark = useDark();
 const cachedViews = [
     "libraryView",
     "shelfView",
+    "historyView",
     "settingsView",
     "readerView" // ← 阅读页也缓存！
 ];

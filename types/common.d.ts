@@ -86,6 +86,65 @@ type UserConfigType = {
     pageMargin?: number;
     /** 用户上传的点击区域布局，key 为唯一名称，同名覆盖 */
     tapZoneLayouts?: Record<string, UserTapZoneItemType[]>;
+    /** 打开历史：书与书库混在一起按时间倒序 */
+    readHistory?: ReadHistoryItemType[];
+    /** 阅读书签 */
+    bookmarks?: BookmarkItemType[];
+};
+
+/**
+ * 历史里「打开过的书」。
+ * id 由 `editUUID + basePath` 决定，同一本书反复打开只更新这一条。
+ */
+type ReadHistoryBookItemType = {
+    id: string;
+    kind: "book";
+    editUUID: string;
+    libraryUUID: string;
+    libraryName: string;
+    /** 书本身的相对路径：压缩包是 `a/b.zip`，目录书是 `a/b`，书库根下的书是空串 */
+    basePath: string;
+    /** 书所在目录，重开时按它请求 comicViewList */
+    parentPath: string;
+    name: string;
+    extType?: ViewFileExtType;
+    isDir: boolean;
+    /** 上次读到的页码（1 基）与总页数 */
+    page: number;
+    total: number;
+    /** 上次读到的文件名；排序规则变了也能按名字把位置找回来 */
+    pageName?: string;
+    openTime: number;
+};
+
+/** 历史里「打开过的书库」 */
+type ReadHistoryLibraryItemType = {
+    id: string;
+    kind: "library";
+    libraryUUID: string;
+    libraryName: string;
+    pathUrl: string;
+    openTime: number;
+};
+
+type ReadHistoryItemType = ReadHistoryBookItemType | ReadHistoryLibraryItemType;
+
+/** 阅读书签：一本书里的一页 */
+type BookmarkItemType = {
+    id: string;
+    editUUID: string;
+    libraryUUID: string;
+    libraryName: string;
+    basePath: string;
+    parentPath: string;
+    name: string;
+    extType?: ViewFileExtType;
+    isDir: boolean;
+    /** 页码（1 基） */
+    page: number;
+    pageName: string;
+    note?: string;
+    createTime: number;
 };
 
 /** 点击区域布局的存储形态（与前端 TapZone 结构一致，坐标 0~1） */

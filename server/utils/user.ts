@@ -113,6 +113,83 @@ export function updateUserConfigs(item: UserConfigType) {
     return userConfigCache[index];
 }
 
+/**
+ * 下面三个 patch 函数给「增量接口」用：前端只发变化的那一条，
+ * 由服务端读出现有配置、合并、再整份写回文件。这样既省流量，
+ * 也不会因为前端忘了带别的字段而把配置冲掉（写回的是合并后的结果）。
+ */
+
+/** 与前端 `src/views/history/historyData.ts` 的 MAX_HISTORY 保持一致 */
+const MAX_READ_HISTORY = 200;
+/** 与前端 MAX_BOOKMARKS 保持一致 */
+const MAX_BOOKMARKS = 500;
+
+/** 按 id 去掉一条，其余顺序不变 */
+function dropById<T extends { id: string }>(list: T[], id: string) {
+    return list.filter((row) => row?.id !== id);
+}
+
+/** 历史增量：upsert 按 id 去重后置顶并按时间倒序截断；remove 按 id 删；clear 清空 */
+export function patchReadHistory(item: {
+    userUUID: string;
+    op: "upsert" | "remove" | "clear";
+    item?: ReadHistoryItemType;
+    id?: string;
+}) {
+    const config = getUserConfig(item.userUUID);
+    let list: ReadHistoryItemType[] = Array.isArray(config.readHistory) ? [...config.readHistory] : [];
+    if (item.op === "clear") {
+        list = [];
+    } else if (item.op === "remove") {
+        list = item.id ? dropById(list, item.id) : list;
+    } else if (item.item?.id) {
+        const row: ReadHistoryItemType = { ...item.item, openTime: item.item.openTime || Date.now() };
+        list = [row, ...dropById(list, row.id)]
+            .sort((a, b) => (b.openTime || 0) - (a.openTime || 0))
+            .slice(0, MAX_READ_HISTORY);
+    }
+    return updateUserConfigs({ userUUID: item.userUUID, readHistory: list });
+}
+
+/** 书签增量：语义同 patchReadHistory，按 createTime 倒序 */
+export function patchBookmarks(item: {
+    userUUID: string;
+    op: "upsert" | "remove" | "clear";
+    item?: BookmarkItemType;
+    id?: string;
+}) {
+    const config = getUserConfig(item.userUUID);
+    let list: BookmarkItemType[] = Array.isArray(config.bookmarks) ? [...config.bookmarks] : [];
+    if (item.op === "clear") {
+        list = [];
+    } else if (item.op === "remove") {
+        list = item.id ? dropById(list, item.id) : list;
+    } else if (item.item?.id) {
+        const row: BookmarkItemType = { ...item.item, createTime: item.item.createTime || Date.now() };
+        list = [row, ...dropById(list, row.id)]
+            .sort((a, b) => (b.createTime || 0) - (a.createTime || 0))
+            .slice(0, MAX_BOOKMARKS);
+    }
+    return updateUserConfigs({ userUUID: item.userUUID, bookmarks: list });
+}
+
+/** 点击区域布局增量：同名覆盖，一次只写一个布局 */
+export function patchTapZoneLayout(item: {
+    userUUID: string;
+    op: "set" | "remove";
+    name: string;
+    zones?: UserTapZoneItemType[];
+}) {
+    const config = getUserConfig(item.userUUID);
+    const layouts = { ...(config.tapZoneLayouts || {}) };
+    if (item.op === "remove") {
+        delete layouts[item.name];
+    } else if (item.zones?.length) {
+        layouts[item.name] = item.zones;
+    }
+    return updateUserConfigs({ userUUID: item.userUUID, tapZoneLayouts: layouts });
+}
+
 export function getUserGroupList() {
     return [...new Set(readUsers().map(item => item.group).filter(c => c))];
 }

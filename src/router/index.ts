@@ -3,6 +3,7 @@ import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-rou
 import LibraryView from '@/views/library/libraryView.vue';
 import ShelfView from "@/views/shelf/shelfView.vue";
 import SettingsView from '@/views/settings/settingsView.vue';
+import HistoryView from '@/views/history/historyView.vue';
 import ReaderView from '@/views/reader/readerView.vue';
 import { useConfigStore } from '@/stores/config';
 
@@ -20,6 +21,12 @@ const routes: RouteRecordRaw[] = [
         name: "shelfView",
         props: true,
         meta: { showBottomNav: true, title: '书架' }
+    },
+    {
+        path: '/history',
+        name: "historyView",
+        component: HistoryView,
+        meta: { showBottomNav: true, title: '历史' }
     },
     {
         path: '/settings',

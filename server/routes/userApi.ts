@@ -1,6 +1,6 @@
 
 import { TransExpressRouter } from "@common/apis/tools/transExpressRouter.js";
-import { addUser, deleteUser, editUser, editUserGroup, getUserConfig, getUserFromToken, getUserGroupList, readUsers, updateUserConfigs, userLogin, vertifyToken } from "../utils/user.js";
+import { addUser, deleteUser, editUser, editUserGroup, getUserConfig, getUserFromToken, getUserGroupList, patchBookmarks, patchReadHistory, patchTapZoneLayout, readUsers, updateUserConfigs, userLogin, vertifyToken } from "../utils/user.js";
 import { Router } from 'express';
 import { UserApiUrl } from "@common/apis/user";
 
@@ -172,6 +172,68 @@ export function useUserApi(router: Router) {
         return {
             data
         };
+    });
+
+    /**
+     * 三个增量接口共用：校验 token 并取回当前用户。
+     * 返回 `[user, error]`，error 不为空时调用方直接把它当响应体返回。
+     */
+    const resolveConfigUser = async (req: any, res: any): Promise<[WebUserType | undefined, any]> => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return [undefined, check];
+        }
+        const token = <string>(req.headers.token);
+        const [user, err] = getUserFromToken(token);
+        if (err) {
+            return [undefined, { code: 500, msg: err }];
+        }
+        return [user, undefined];
+    };
+
+    /** 增量接口统一入口：校验 → 交给 utils 里的 patch 函数合并 → 返回整份配置 */
+    const runConfigPatch = async (req: any, res: any, userUUID: string, apply: () => UserConfigType) => {
+        const [user, err] = await resolveConfigUser(req, res);
+        if (err) {
+            return err;
+        }
+        if (userUUID !== user?.uuid) {
+            return { code: 502, msg: "用户uuid不正确" };
+        }
+        return { data: apply() };
+    };
+
+    userRouter.setRouter("patchHistory", async (from, req, res) => {
+        return await runConfigPatch(req, res, from.userUUID, () =>
+            patchReadHistory({
+                userUUID: from.userUUID,
+                op: from.op,
+                item: from.item,
+                id: from.id,
+            })
+        );
+    });
+
+    userRouter.setRouter("patchBookmarks", async (from, req, res) => {
+        return await runConfigPatch(req, res, from.userUUID, () =>
+            patchBookmarks({
+                userUUID: from.userUUID,
+                op: from.op,
+                item: from.item,
+                id: from.id,
+            })
+        );
+    });
+
+    userRouter.setRouter("patchTapZoneLayout", async (from, req, res) => {
+        return await runConfigPatch(req, res, from.userUUID, () =>
+            patchTapZoneLayout({
+                userUUID: from.userUUID,
+                op: from.op,
+                name: from.name,
+                zones: from.zones,
+            })
+        );
     });
 
     userRouter.setRouter("getUserConfig", async (from, req, res) => {

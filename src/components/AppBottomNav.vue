@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useRoute } from "vue-router";
-import { BookOutline, SettingsOutline, LibraryOutline } from "@vicons/ionicons5";
+import { BookOutline, SettingsOutline, LibraryOutline, TimeOutline } from "@vicons/ionicons5";
 import { useThemeVars } from "naive-ui";
 
 const route = useRoute();
@@ -22,6 +22,7 @@ const themeVars = useThemeVars();
 const navItems = [
     { label: "书库", path: "/library", icon: LibraryOutline },
     { label: "书架", path: "/shelf", icon: BookOutline },
+    { label: "历史", path: "/history", icon: TimeOutline },
     { label: "设置", path: "/settings", icon: SettingsOutline }
 ];
 

@@ -1,6 +1,11 @@
 <template>
     <n-drawer :show="modelShow" placement="bottom" :height="'68%'" @update:show="onUpdateShow">
-        <n-drawer-content title="阅读设置" closable body-content-style="padding: 8px 8px 16px 8px;">
+        <n-drawer-content
+            title="阅读设置"
+            closable
+            :native-scrollbar="false"
+            body-content-style="padding: 8px 12px 16px 8px;"
+        >
             <n-tabs v-model:value="tab" type="line" animated justify-content="space-evenly" pane-class="rs-pane">
                 <n-tab-pane name="reader" tab="阅读">
                     <settings-reader />

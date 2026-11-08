@@ -1,4 +1,6 @@
 import './assets/main.css';
+// 统一滚动条外观（必须在 main.css 之后，才能盖住全局默认样式）
+import './assets/scrollbar.css';
 
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';

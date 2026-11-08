@@ -7,6 +7,7 @@ export type TapActionKey =
     | "backToShelf"
     | "backToLibrary"
     | "jumpPage"
+    | "toggleBookmark"
     | "setFitMode";
 
 export interface TapActionMeta {
@@ -23,6 +24,7 @@ export const tapActions: TapActionMeta[] = [
     { key: "backToShelf", label: "返回书架" },
     { key: "backToLibrary", label: "返回书库" },
     { key: "jumpPage", label: "跳转到指定页" },
+    { key: "toggleBookmark", label: "添加 / 取消书签" },
     { key: "setFitMode", label: "切换适配方式" },
     { key: "none", label: "不响应" }
 ];

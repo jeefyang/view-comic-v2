@@ -41,7 +41,7 @@
     </n-flex>
     <!-- 下拉 -->
     <n-drawer v-model:show="openDrawer" placement="top" :height="500" @after-enter="onShow">
-        <n-drawer-content :title="drawerType == 'add' ? '新建' : '编辑'">
+        <n-drawer-content :title="drawerType == 'add' ? '新建' : '编辑'" :native-scrollbar="false">
             <n-form ref="formRef" :model="formData"> </n-form>
             <n-form-item label="仓库名" path="name">
                 <n-input v-model:value="formData.name" placeholder="输入仓库名" />
@@ -71,6 +71,7 @@ import { useRoute, useRouter } from "vue-router";
 import XDropdownInput from "@/components/XDropdownInput.vue";
 import { libraryFetch, userFetch } from "@/utils/jFetch";
 import { useViewStore } from "@/stores/view";
+import { touchHistoryLibrary } from "@/views/history/historyData";
 
 const themeVars = useThemeVars();
 const openDrawer = ref(false);
@@ -190,6 +191,12 @@ const toTest = async (item: EditLibraryType) => {
 const toJump = (item: JsonLibrary) => {
     // window.open(item.pathUrl);
     viewStore.setLibrary(item);
+    // 记一条「打开过的书库」到云端历史
+    touchHistoryLibrary({
+        libraryUUID: item.uuid,
+        libraryName: item.name,
+        pathUrl: item.pathUrl,
+    });
     router.push({ path: "/shelf" });
 };
 

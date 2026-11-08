@@ -77,6 +77,17 @@
 - 开关：`src/utils/appFeatures.ts` 的 `appFeatures.thumbnails`（设置 → 数据 → 缩略图）。关掉后前端一个请求都不发，书架与阅读页文件列表都退回图标。
 - 压缩包并发：`myStreamZip.ts` 必须**等 `init()` 完成再入缓存**（用 `opening` Promise 合并同路径的首次打开），否则并发首次访问会拿到空的 `fileList`；读取单个条目不要调 `zip.finishStream()`，它会关掉同包其它请求的流。
 
+### 历史与书签
+- 数据存云端 `userConfig`（`data/userConfig.json`）：`readHistory`（最多 200 条，`openTime` 倒序）与 `bookmarks`（最多 500 条，`createTime` 倒序），读写都在 `src/views/history/historyData.ts`，页面是 `src/views/history/historyView.vue` 的两个标签页。
+- 历史一条 = 一本书（id `book::<editUUID>::<basePath>`）或一个书库（id `lib::<libraryUUID>`），`kind` 区分；书签 id 是 `bm_<时间36进制>_<随机>`。
+- **写入是增量的，不要改回整包 `setUserConfig`**：`common/apis/user.ts` 有 `patchHistory` / `patchBookmarks`（`op: upsert | remove | clear`，带单条 `item` 或 `id`）与 `patchTapZoneLayout`（`op: set | remove` + 布局名）。服务端在 `server/utils/user.ts` 的 `patchReadHistory()` / `patchBookmarks()` / `patchTapZoneLayout()` 里做合并、去重、截断，`server/routes/userApi.ts` 只做 token 与 uuid 校验。整包接口一次要传 200 + 500 条（约 170 KB），阅读时每 4 秒一次，必须用增量。
+- 前端把改动放进 `pendingHistory` / `pendingBookmarks` 两个 `Map<id, "upsert" | "remove">` + `historyClearPending` / `bookmarksClearPending` 两个清空标记，`flushHistory()` 逐条推、推成功才出队，失败保留并 8 秒后重试；`scheduleSave()` 默认 4 秒防抖（页码变化只改本地），离开阅读页调 `flushAll()` 立即推。
+- 陷阱：`flushHistory()` 第一行是 `if (!dirty) return`，所以**任何入队之后都必须先 `markDirty()`**，否则这次改动永远不推（历史上「新开的书一条都不进历史」就是这个）。
+- 陷阱：`loadHistory()` 拉云端前若 `dirty` 为真要先 `flushHistory()`，并用 `mutateSeq` 版本号判断回填——否则返回的旧数据会把这期间的新记录/删除冲掉。
+- 根目录书：服务端把根目录的 `basePath` 与 `baseFile.name` 都给 `"."`，`normalizeFileName(".")` 会归一成空串，于是名字为空、`touchHistoryBook()` 直接 `return`。取书名一律用 `readerView.vue` 的 `bookDisplayName()`（`baseFile.name || basePath 最后一段 || "根目录"`），显示层再用 `displayBookName()` 把 `"."` 换成「根目录」。
+- 入口：悬浮菜单 `floatActions.ts` 的 `toggleBookmark`（label 由 `floatActionLabel(key, bookmarked)` 决定，`FloatActions.vue` 接 `bookmarked` prop）与点击区域动作 `tapZones/actions.ts` 的 `toggleBookmark`，两处都调 `readerView.vue` 的 `toggleBookmarkOfPage()`（同页已有书签就删、没有就加）。
+- 点击区域布局也走单布局增量：`tapZones/layouts.ts` 的 `patchLayout(name, zones?)` 取代了原来的整包 `putLayouts()`；`saveLayoutAs()` 传 `op: "set"`，`removeLayout()` 传 `op: "remove"`。
+
 ## 约定与陷阱
 
 - **生产环境的 CSP 必须放行 `blob:`**：`server/index.ts` 只在 `NODE_ENV !== 'development'` 时才 `app.use(helmet(...))`，helmet 默认 CSP 是 `img-src 'self' data:`，而 `'self'` **不匹配 `blob:` 协议**；缩略图恰好是 `fetch → URL.createObjectURL → <img src="blob:...">`，于是打包版整面灰块、图位显示 `alt` 文字，开发版却完全正常（dev 的 HTML 由 Vite 中间件返回，helmet 只作用在 `/api` 响应上）。现在 `img-src` / `media-src` / `connect-src` 都显式带了 `blob:`，改动见 `server/index.ts`。
@@ -89,6 +100,7 @@
 - 模板里裸写 `@vicons/*` 组件名不会被解析（`vite.config.ts` 只配了 `NaiveUiResolver`），必须显式 `import`。
 - 纯 CSS 的 `<style scoped>` 里不能用 `//` 注释（会报 `Unknown word`）。
 - `#main` 是定高 + `overflow: hidden` 的弹性容器，页面内容超一屏要自己开滚动区（参考 `settingsView.vue` 的 `.parent`：`height: 100%; min-height: 0; overflow-y: auto;` + 隐藏滚动条）。
+- **滚动条统一走 `src/assets/scrollbar.css`**（在 `main.css` 之后引入）：全局 `*` 规则统一成 8px、圆角 999px、半透明灰滑块、轨道透明，Firefox 用 `scrollbar-width: thin` + `scrollbar-color` 两套写法都要留。naive-ui 自带的 `n-scrollbar` 不用 CSS 类而用 `--n-scrollbar-*` 变量，且这些变量内联写在元素上 → 只能靠 `.n-scrollbar { --n-scrollbar-color: ... !important }` 覆盖。抽屉（`n-drawer-content`）要加 `:native-scrollbar="false"` 才会用这套；书架列表、`VirtualList`、瀑布流、设置页仍刻意隐藏滚动条，它们的选择器优先级高于全局 `*` 规则，别一起改掉。
 - 依赖只留用得上的：`adm-zip` / `fflate` / `iconv-lite` / `yauzl` / `tsx` / `vite-plugin-inspect` / `vite-plugin-node` / `vite-plugin-vue-devtools` 已清理，别再顺手装回来。
 
 ## 已实现的功能面
@@ -98,6 +110,9 @@
 - 点击区域：可拖拽 / 八向改大小 / 2% 吸附；动作含翻页、切 UI、设置、跳页、返回书架 / 书库、切换适配方式；预设布局；布局上传到个人账户（`userConfig.tapZoneLayouts`，同名覆盖）
 - 设置页：阅读 / 翻页 / 账号 / 数据四个标签；阅读设置另有半屏抽屉
 - 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先
+- 历史：导航栏「历史」页，两个标签页分别列历史与书签；记打开过的书（含页码 / 总页数）与打开过的书库，云端同步（4 秒防抖增量推送，离开阅读页立即推）；历史与书签卡片都显示「书库名 / 路径」，可单条删除、可清空
+- 书签：阅读页悬浮菜单与点击区域动作都能加 / 取消当前页书签，书签可点了直接跳到那本书那一页
+- 滚动条：全局统一成细圆角半透明滑块（`src/assets/scrollbar.css`），两个抽屉改用 naive 滚动条
 - 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
 - 安全：`/file`、`/view/*` 全部限制在书库根内
 

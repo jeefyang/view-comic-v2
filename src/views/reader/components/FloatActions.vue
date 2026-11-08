@@ -13,7 +13,7 @@
                         secondary
                         @click="onClick(item.key)"
                     >
-                        {{ item.label }}
+                        {{ floatActionLabel(item.key, bookmarked) }}
                     </n-button>
                 </div>
             </div>
@@ -23,12 +23,14 @@
 
 <script lang="ts" setup>
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { floatActions, type FloatActionKey } from "./floatActions";
+import { floatActions, floatActionLabel, type FloatActionKey } from "./floatActions";
 
 const props = defineProps<{
     show: boolean;
     /** 跟随的锚点元素（悬浮按钮的根节点） */
     anchor?: HTMLElement | null;
+    /** 当前页是否已有书签，决定菜单里显示「添加书签」还是「取消书签」 */
+    bookmarked?: boolean;
 }>();
 
 const emit = defineEmits<{

@@ -1,0 +1,61 @@
+/**
+ * 统一滚动条外观。
+ *
+ * 之前每个能滚的容器都用浏览器默认滚动条：又宽又是直角，暗色主题下一条浅色长条
+ * 贴在右边特别扎眼。这里统一成：8px、圆角、半透明灰滑块、轨道透明、悬停加深。
+ * 两套写法：Firefox 用标准属性，Chromium/WebKit 用伪元素。
+ */
+
+:root {
+    --app-scrollbar-size: 8px;
+    --app-scrollbar-thumb: rgba(127, 127, 127, 0.38);
+    --app-scrollbar-thumb-hover: rgba(127, 127, 127, 0.62);
+}
+
+/* Firefox：thin + 颜色 */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--app-scrollbar-thumb) transparent;
+}
+
+/* Chromium / WebKit */
+*::-webkit-scrollbar {
+    width: var(--app-scrollbar-size);
+    height: var(--app-scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+    /* 边框留白 + padding-box：滑块比轨道窄一圈，看起来更细 */
+    background-color: var(--app-scrollbar-thumb);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+    border-radius: 999px;
+    /* 太短的滑块圆角会变形成药片，给个下限 */
+    min-height: 32px;
+    min-width: 32px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+    background-color: var(--app-scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/**
+ * naive-ui 自带的 n-scrollbar：它把宽度、圆角、颜色都放在 CSS 变量上，
+ * 而变量是内联写在元素上的，所以这里要 !important 才能盖住。
+ */
+.n-scrollbar {
+    --n-scrollbar-width: var(--app-scrollbar-size) !important;
+    --n-scrollbar-height: var(--app-scrollbar-size) !important;
+    --n-scrollbar-border-radius: 999px !important;
+    --n-scrollbar-color: var(--app-scrollbar-thumb) !important;
+    --n-scrollbar-color-hover: var(--app-scrollbar-thumb-hover) !important;
+    --n-scrollbar-rail-color: transparent !important;
+}
