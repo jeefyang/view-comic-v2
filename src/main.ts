@@ -15,7 +15,7 @@ import 'vfonts/Lato.css';
 import 'vfonts/FiraCode.css';
 import "virtual:uno.css";
 
-import { initDebug } from "./myDebug";
+// import { initDebug } from "./myDebug";
 // import naive from 'naive-ui'
 
 const app = createApp(App);
@@ -25,4 +25,4 @@ app.use(router);
 app.use(Vue3TouchEvents);
 // app.use(naive)
 app.mount('#app');
-initDebug();
+// initDebug();
