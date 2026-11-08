@@ -7,6 +7,7 @@ import { getLibPathByUUID } from '../utils/library.js';
 import fs from 'fs';
 import path from "path";
 import { getComicViewList, getComicViewListByFile } from '../utils/view.js';
+import { getFileExt } from '../utils/index.js';
 import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
 import { resolveInsideRoot } from '../utils/pathSafe.js';
@@ -130,9 +131,32 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
 
         }
         else {
+            const extData = getFileExt(url);
+            // 普通文件（单张图片 / 视频）：直接按文件流返回。
+            // 以前这里不看类型，一律当压缩包打开 —— 在书架根目录点开一张图片时，
+            // node-stream-zip 会拿 JPEG 当 zip 解析并抛 `Bad archive`，
+            // 它是个未捕获的 'error' 事件，会把整个进程带下去（列表/缩略图/图片全部连带 404）。
+            if (extData.extType !== "zip") {
+                res.setHeader("Content-Type", getContentType(url));
+                res.setHeader("Accept-Ranges", 'bytes');
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                const fileStream = fs.createReadStream(url);
+                fileStream.on('error', (err) => {
+                    console.error('读取文件时出错:', err);
+                });
+                if (limitRange) {
+                    fileStream.pipe(getLimitStream({ maxLimit: limitRange, fileStream })).pipe(res);
+                }
+                else {
+                    fileStream.pipe(res);
+                }
+                return;
+            }
             const data = await getMyStreamZip(url);
             if (data[1]) {
-                return res.sendStatus(404);
+                // 坏包 / 加密包：只让这一个请求失败，不要让异常冒到进程级
+                console.error('打开压缩包失败:', url, data[1]);
+                return res.status(500).send('压缩包无法读取');
             }
             const obj = data[0]!;
             res.setHeader("Content-Type", getContentType(obj.fileList[num].name));

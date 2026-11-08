@@ -11,6 +11,22 @@ import { readTokenCache } from './utils/cache.js';
 import { readLibs } from './utils/library.js';
 
 const app: Express = express();
+
+// 兜底：任何漏网的异常都不该让服务「静默死掉」——pm2 只会看到一次无输出重启，
+// 用户侧就是「列表加载不出来 / 图片加载一半就断 / 缩略图报错」这类连锁故障。
+// 这里只记日志、不退出；真正的致命问题仍交给 pm2 的重启策略。
+// 开发环境本模块会被 vite 反复重新加载，用 globalThis 标记保证只注册一次，避免监听器越积越多。
+const guardFlag = globalThis as { __viewComicCrashGuard?: boolean };
+if (!guardFlag.__viewComicCrashGuard) {
+    guardFlag.__viewComicCrashGuard = true;
+    process.on("uncaughtException", (err) => {
+        console.error("[uncaughtException]", err);
+    });
+    process.on("unhandledRejection", (reason) => {
+        console.error("[unhandledRejection]", reason);
+    });
+}
+
 readConfig();
 readUsers();
 readUserConfigs();

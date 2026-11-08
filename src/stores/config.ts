@@ -2,13 +2,23 @@ import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
 import { libraryFetch, userFetch } from '@/utils/jFetch';
 
+/** 阅读边距默认值（px）：手机上一屏正好留出安全边距，又不至于浪费显示面积 */
+export const DEFAULT_PADDING = 8;
+/** 瀑布流图片间距默认值（px） */
+export const DEFAULT_IMAGE_GAP = 6;
+
 export const useConfigStore = defineStore('config', () => {
     const token = ref("");
     const username = ref("");
     const userUUID = ref("");
     const userType = ref(<UserTypeType>"user");
-    const padding = ref(2);
-    const pageMargin = ref(2);
+    /** 阅读边距（px）：上下左右各自独立，用来避开刘海、页码栏和屏幕圆角 */
+    const paddingTop = ref(DEFAULT_PADDING);
+    const paddingBottom = ref(DEFAULT_PADDING);
+    const paddingLeft = ref(DEFAULT_PADDING);
+    const paddingRight = ref(DEFAULT_PADDING);
+    /** 瀑布流里两张图之间的可见空隙（px），内部按一半做上下 margin */
+    const imageGap = ref(DEFAULT_IMAGE_GAP);
 
 
     const saveKey = "config";
@@ -23,7 +33,7 @@ export const useConfigStore = defineStore('config', () => {
 
 
     const cloudData = {
-        padding,pageMargin
+        paddingTop, paddingBottom, paddingLeft, paddingRight, imageGap
     };
 
     const returnData = {
@@ -91,12 +101,58 @@ export const useConfigStore = defineStore('config', () => {
                 cloudData[key].value = res.data![key];
             }
         });
+        // 旧版本云端只存了一个 padding / pageMargin，这里迁移成四向边距 + 图片间距
+        const legacy = res.data as { padding?: number; pageMargin?: number; };
+        if (!cloudKeys.includes("paddingTop") && typeof legacy.padding === "number") {
+            paddingTop.value = legacy.padding;
+            paddingBottom.value = legacy.padding;
+            paddingLeft.value = legacy.padding;
+            paddingRight.value = legacy.padding;
+        }
+        if (!cloudKeys.includes("imageGap") && typeof legacy.pageMargin === "number") {
+            imageGap.value = legacy.pageMargin * 2;
+        }
 
         return res;
     };
 
 
 
+    let spacingTimer: ReturnType<typeof setTimeout> | undefined;
+
+    /** 边距类的即时生效、延迟上云：拖动滑块时每动一次都发请求没必要 */
+    const saveReaderSpacing = (delay = 500) => {
+        if (spacingTimer) {
+            clearTimeout(spacingTimer);
+        }
+        spacingTimer = setTimeout(() => {
+            spacingTimer = undefined;
+            if (!userUUID.value) {
+                return;
+            }
+            // 服务端的 setUserConfig 是按 key 合并的，只传这几个字段不会碰
+            // readHistory / bookmarks / tapZoneLayouts 等其它配置
+            userFetch.request("setUserConfig", {
+                userUUID: userUUID.value,
+                paddingTop: paddingTop.value,
+                paddingBottom: paddingBottom.value,
+                paddingLeft: paddingLeft.value,
+                paddingRight: paddingRight.value,
+                imageGap: imageGap.value
+            });
+        }, delay);
+    };
+
+    /** 恢复默认边距 */
+    const resetReaderSpacing = () => {
+        paddingTop.value = DEFAULT_PADDING;
+        paddingBottom.value = DEFAULT_PADDING;
+        paddingLeft.value = DEFAULT_PADDING;
+        paddingRight.value = DEFAULT_PADDING;
+        imageGap.value = DEFAULT_IMAGE_GAP;
+        saveReaderSpacing(0);
+    };
+
     load();
-    return { ...returnData, ...cloudData, showLogin, save, load, clear, toLogin, toLogout, isLogin, groupList, updateGroupList, isInit, initConfig };
+    return { ...returnData, ...cloudData, saveReaderSpacing, resetReaderSpacing, showLogin, save, load, clear, toLogin, toLogout, isLogin, groupList, updateGroupList, isInit, initConfig };
 });

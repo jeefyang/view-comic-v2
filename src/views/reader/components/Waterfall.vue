@@ -1,5 +1,14 @@
 <template>
-    <div ref="mainRef" class="main" :style="{ padding: configStore.padding + 'px' }"></div>
+    <div
+        ref="mainRef"
+        class="main"
+        :style="{
+            paddingTop: configStore.paddingTop + 'px',
+            paddingBottom: configStore.paddingBottom + 'px',
+            paddingLeft: configStore.paddingLeft + 'px',
+            paddingRight: configStore.paddingRight + 'px'
+        }"
+    ></div>
 </template>
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
@@ -225,8 +234,8 @@ const resetData = () => {
     displayPageList = [];
     lastEmitIndex = -1;
 
-    screenWidth = main.clientWidth - configStore.padding * 2;
-    screenHeight = main.clientHeight - configStore.padding * 2;
+    screenWidth = main.clientWidth - configStore.paddingLeft - configStore.paddingRight;
+    screenHeight = main.clientHeight - configStore.paddingTop - configStore.paddingBottom;
     // 还没显示过的页没有真实宽高。用整屏高度估算会让累加出的 scroll 偏小（漫画页通常比屏幕高），
     // 所以改用已知页的平均高度；一页都不知道时才退回整屏高度。
     let loadedHeightSum = 0;
@@ -241,7 +250,8 @@ const resetData = () => {
 
     // 双开页（横图）在开启分割时拆成上下两块：每块都铺满宽度，所以单块高度是普通页的两倍。
     // 未知尺寸的页此时无法判断横竖，先按整页排，等它加载出来再触发一次重排。
-    const margin = configStore.pageMargin * 2;
+    // 两图之间的可见空隙。每页上下各留一半，flex 容器里外边距不合并，合起来正好是一个 gap。
+    const gap = configStore.imageGap;
     let offset = 0;
     let displayIndex = 0;
     let imageIndex = 0;
@@ -255,7 +265,7 @@ const resetData = () => {
         for (const half of halves) {
             const scale = isLoaded ? (half === undefined ? screenWidth / item.width! : (screenWidth * 2) / item.width!) : 1;
             const divHeight = isLoaded ? item.height! * scale : estimateHeight;
-            const displayHeight = divHeight + margin;
+            const displayHeight = divHeight + gap;
             pages.push({
                 ...item,
                 half,
@@ -281,8 +291,8 @@ const resetContentDiv = () => {
     curContentDiv = document.createElement("div");
     curContentDiv.className = "contentDiv";
     // 用 flex 列布局让子元素的外边距不再合并：
-    // 块级相邻元素的 margin 会合并成一个，而 displayHeight 里按上下各算了一份 pageMargin，
-    // 两者不一致会让每页累计的 scroll 偏移 pageMargin，页数越多跳转落点越偏。
+    // 块级相邻元素的 margin 会合并成一个，而 displayHeight 里是按整份 gap 算的，
+    // 两者不一致会让每页累计的 scroll 偏移，页数越多跳转落点越偏。
     curContentDiv.style.display = "flex";
     curContentDiv.style.flexDirection = "column";
     return curContentDiv;
@@ -336,7 +346,7 @@ const updatePage = (page: WaterfallPageType, width: number, height: number) => {
     // 双开页的半块铺满宽度，所以是 2 倍缩放
     page.contentScale = page.half === undefined ? screenWidth / width : (screenWidth * 2) / width;
     page.divHeight = height * page.contentScale;
-    page.displayHeight = page.divHeight + configStore.pageMargin * 2;
+    page.displayHeight = page.divHeight + configStore.imageGap;
     page.displayWidth = screenWidth;
     saveDebounced();
 };
@@ -345,8 +355,8 @@ const createContentDiv = (page: WaterfallPageType) => {
     const div = document.createElement("div");
     // flex 容器里显式高度不会被压缩，保证实际占位与计算出的 divHeight 一致
     div.style.flex = "0 0 auto";
-    div.style.marginTop = configStore.pageMargin + "px";
-    div.style.marginBottom = configStore.pageMargin + "px";
+    div.style.marginTop = configStore.imageGap / 2 + "px";
+    div.style.marginBottom = configStore.imageGap / 2 + "px";
     div.style.width = page.divWidth + "px";
     div.style.height = page.divHeight + "px";
     // 占位层用绝对定位盖在图上，容器必须是定位上下文
@@ -699,6 +709,17 @@ let resizeObserver: ResizeObserver | undefined;
 // 切换「自动分割双开页」时整份布局都变了，停在当前页重排
 watch(
     () => readerSettings.splitSpread,
+    () => {
+        if (!sortPageList.length) {
+            return;
+        }
+        refresh(currentOriginalIndex());
+    }
+);
+
+// 改边距 / 图片间距会让所有页的高度和可用宽度都变，同样停在当前页重排
+watch(
+    () => [configStore.paddingTop, configStore.paddingBottom, configStore.paddingLeft, configStore.paddingRight, configStore.imageGap],
     () => {
         if (!sortPageList.length) {
             return;

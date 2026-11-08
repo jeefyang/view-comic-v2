@@ -15,6 +15,8 @@ class MyStreamZip {
     updateTime: number = -1;
     len: number = 0;
     isWork = false;
+    /** 最近一次打开/读取时的错误（坏包、截断、加密），清空后表示这个实例是健康的 */
+    lastError: unknown = undefined;
     protected finishStreamFnList: { uuid: string, fn: () => void; }[] = [];
     constructor(public p: string, public nameEncoding?: string) {
         if (!this.nameEncoding) {
@@ -26,6 +28,7 @@ class MyStreamZip {
     private create() {
 
         this.updateTime = new Date().getTime();
+        this.lastError = undefined;
     }
 
 
@@ -35,14 +38,43 @@ class MyStreamZip {
         this.isWork = true;
         this.obj = new StreamZip({ file: this.p, nameEncoding: this.nameEncoding });
         const entries: StreamZip.ZipEntry[] = [];
-        await new Promise((res, rej) => {
-            this.obj?.on("ready", () => {
-                res(undefined);
-            });
-            this.obj!.on("entry", (entry) => {
-                entries.push(entry);
-            });
+        let settled = false;
+        let rejectOpen: (e: unknown) => void = () => { };
+        // 常驻监听：node-stream-zip 在「不是 zip / 包被截断 / 加密包」时会 emit('error')。
+        // 没有监听者时 Node 会把它升级成未捕获异常，直接结束整个进程 ——
+        // 一个坏文件就能让整个服务瘫痪，所以这里必须接住，并且失败后把实例从缓存里剔掉。
+        this.obj.on("error", (err: unknown) => {
+            this.lastError = err;
+            if (!settled) {
+                settled = true;
+                rejectOpen(err);
+            }
         });
+        try {
+            await new Promise<void>((res, rej) => {
+                rejectOpen = rej;
+                this.obj!.on("ready", () => {
+                    settled = true;
+                    res();
+                });
+                this.obj!.on("entry", (entry) => {
+                    entries.push(entry);
+                });
+            });
+        }
+        catch (e) {
+            // 关掉半开的句柄，避免文件被占用；关闭失败无所谓（包本身就打不开）
+            try {
+                await this.close();
+            }
+            catch {
+                this.obj = undefined;
+            }
+            this.fileList = [];
+            this.curEntries = [];
+            this.isWork = false;
+            throw e;
+        }
 
         this.curEntries = [];
         let len = 0;
@@ -155,6 +187,12 @@ export async function getMyStreamZip(p: string, nameEncoding?: string, deleteInd
     try {
         for (let i = 0; i < list.length; i++) {
             if (list[i].p == p) {
+                // 上一次打开就失败过（坏包/截断/加密）：这个实例不能当命中使用，
+                // 剔出缓存后走下面的重新打开流程，坏文件才会稳定地返回错误而不是崩进程。
+                if (list[i].stream.lastError) {
+                    list.splice(i, 1);
+                    break;
+                }
                 if (list[i].nameEncoding != nameEncoding) {
                     await list[i].stream.rebuild(nameEncoding);
                 }

@@ -82,8 +82,17 @@ type UserTypeType = 'admin' | 'user';
 
 type UserConfigType = {
     userUUID: string;
+    /** @deprecated 旧版只有一个统一边距，读取时迁移到下面四个字段 */
     padding?: number;
+    /** @deprecated 旧版瀑布流间距（半间距），读取时迁移到 imageGap */
     pageMargin?: number;
+    /** 阅读边距（px）：上下左右各自独立 */
+    paddingTop?: number;
+    paddingBottom?: number;
+    paddingLeft?: number;
+    paddingRight?: number;
+    /** 瀑布流里两张图之间的可见空隙（px） */
+    imageGap?: number;
     /** 用户上传的点击区域布局，key 为唯一名称，同名覆盖 */
     tapZoneLayouts?: Record<string, UserTapZoneItemType[]>;
     /** 打开历史：书与书库混在一起按时间倒序 */

@@ -26,6 +26,39 @@
             </n-flex>
         </div>
 
+
+        <div class="section">
+            <div class="section-title ml-3 mb-1">阅读边距</div>
+            <div class="spacing-row">
+                <span class="spacing-label">上边距</span>
+                <n-slider class="spacing-slider" :value="configStore.paddingTop" :min="0" :max="48" :step="1" :tooltip="false" @update:value="(v: number) => setSpacing('paddingTop', v)" />
+                <span class="spacing-value">{{ configStore.paddingTop }} px</span>
+            </div>
+            <div class="spacing-row">
+                <span class="spacing-label">下边距</span>
+                <n-slider class="spacing-slider" :value="configStore.paddingBottom" :min="0" :max="48" :step="1" :tooltip="false" @update:value="(v: number) => setSpacing('paddingBottom', v)" />
+                <span class="spacing-value">{{ configStore.paddingBottom }} px</span>
+            </div>
+            <div class="spacing-row">
+                <span class="spacing-label">左边距</span>
+                <n-slider class="spacing-slider" :value="configStore.paddingLeft" :min="0" :max="48" :step="1" :tooltip="false" @update:value="(v: number) => setSpacing('paddingLeft', v)" />
+                <span class="spacing-value">{{ configStore.paddingLeft }} px</span>
+            </div>
+            <div class="spacing-row">
+                <span class="spacing-label">右边距</span>
+                <n-slider class="spacing-slider" :value="configStore.paddingRight" :min="0" :max="48" :step="1" :tooltip="false" @update:value="(v: number) => setSpacing('paddingRight', v)" />
+                <span class="spacing-value">{{ configStore.paddingRight }} px</span>
+            </div>
+            <div v-if="isWaterfall" class="spacing-row">
+                <span class="spacing-label">图片间距</span>
+                <n-slider class="spacing-slider" :value="configStore.imageGap" :min="0" :max="48" :step="1" :tooltip="false" @update:value="(v: number) => setSpacing('imageGap', v)" />
+                <span class="spacing-value">{{ configStore.imageGap }} px</span>
+            </div>
+            <div class="spacing-tip">
+                <span>{{ isWaterfall ? "上下左右留白 + 图片之间的空隙，灰色区域是背景" : "上下左右留白，切换阅读模式后瀑布流还会多一项「图片间距」" }}</span>
+                <n-button size="tiny" quaternary @click="configStore.resetReaderSpacing()">恢复默认</n-button>
+            </div>
+        </div>
         <div class="section">
             <div class="section-title ml-3 mb-1">双开页</div>
             <XSwitchItem
@@ -68,7 +101,20 @@
 import XSwitchItem from "@/components/XSwitchItem.vue";
 import XOptionItem from "@/components/XOptionItem.vue";
 import { readerFeatures } from "@/views/reader/readerFeatures";
+import { useConfigStore } from "@/stores/config";
+import { computed } from "vue";
 import { readerSettings, type PageDirectionType, type ReaderModeType } from "@/views/reader/readerSettings";
+
+const configStore = useConfigStore();
+
+/** 只有瀑布流才有「图片间距」这个概念，单页模式不显示这一行 */
+const isWaterfall = computed(() => readerSettings.mode === "waterfall");
+
+/** 拖动即时生效，落云由 store 里的防抖负责，避免每一帧都发请求 */
+const setSpacing = (key: "paddingTop" | "paddingBottom" | "paddingLeft" | "paddingRight" | "imageGap", value: number) => {
+    configStore[key] = value;
+    configStore.saveReaderSpacing();
+};
 
 const modeOptions: { value: ReaderModeType; label: string; description: string }[] = [
     { value: "waterfall", label: "瀑布流", description: "连续滚动，适合条漫与长图" },
@@ -86,5 +132,43 @@ const directionOptions: { value: PageDirectionType; label: string; description: 
 .section-title {
     font-size: 14px;
     opacity: 0.6;
+}
+
+.spacing-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 12px;
+}
+
+.spacing-label {
+    flex: none;
+    width: 56px;
+    font-size: 13px;
+    opacity: 0.78;
+}
+
+.spacing-slider {
+    flex: 1;
+    min-width: 0;
+}
+
+.spacing-value {
+    flex: none;
+    width: 48px;
+    text-align: right;
+    font-size: 12px;
+    opacity: 0.55;
+    font-variant-numeric: tabular-nums;
+}
+
+.spacing-tip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px 0;
+    font-size: 12px;
+    opacity: 0.55;
 }
 </style>

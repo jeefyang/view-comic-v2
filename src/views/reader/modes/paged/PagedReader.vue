@@ -1,5 +1,5 @@
 <template>
-    <div ref="containerRef" class="paged-reader" :class="{ 'is-pannable': pannable }">
+    <div ref="containerRef" class="paged-reader" :class="{ 'is-pannable': pannable }" :style="pagePaddingStyle">
         <div class="page-box">
             <div v-if="page && pageUrl && isSpread" :key="`${pageUrl}-spread`" class="spread-box" :style="spreadBoxStyle">
                 <img
@@ -43,6 +43,7 @@
 <script lang="ts" setup>
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from "vue";
 import { useViewStore } from "@/stores/view";
+import { useConfigStore } from "@/stores/config";
 import { readerPages } from "@/views/reader/readerPages";
 import { readerSettings } from "@/views/reader/readerSettings";
 import type { ReaderModeHandle } from "@/views/reader/modes/types";
@@ -69,6 +70,7 @@ const emit = defineEmits<{
 }>();
 
 const viewStore = useViewStore();
+const configStore = useConfigStore();
 
 // 顺序来自 readerPages（按阅读页的排序设置排过），index 是这个数组的下标
 const list = computed(() => readerPages.value);
@@ -474,15 +476,29 @@ const onKeydown = (e: KeyboardEvent) => {
 
 let resizeObserver: ResizeObserver | undefined;
 
+/** 阅读边距：和瀑布流共用同一份配置，单页模式也跟着收缩可用区域 */
+const pagePaddingStyle = computed(() => ({
+    paddingTop: configStore.paddingTop + "px",
+    paddingBottom: configStore.paddingBottom + "px",
+    paddingLeft: configStore.paddingLeft + "px",
+    paddingRight: configStore.paddingRight + "px"
+}));
+
 const measure = () => {
     const el = containerRef.value;
     if (!el) {
         return;
     }
     const rect = el.getBoundingClientRect();
-    viewSize.width = Math.max(0, Math.round(rect.width));
-    viewSize.height = Math.max(0, Math.round(rect.height));
+    // getBoundingClientRect 含 padding，可用区域要减掉，否则图片会顶到边距里
+    viewSize.width = Math.max(0, Math.round(rect.width) - configStore.paddingLeft - configStore.paddingRight);
+    viewSize.height = Math.max(0, Math.round(rect.height) - configStore.paddingTop - configStore.paddingBottom);
 };
+
+watch(
+    () => [configStore.paddingTop, configStore.paddingBottom, configStore.paddingLeft, configStore.paddingRight],
+    () => measure()
+);
 
 onMounted(() => {
     measure();

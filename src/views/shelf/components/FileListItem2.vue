@@ -44,6 +44,22 @@ const snapshot = (key = pathKey()) => {
     scrollMemo.set(key, { name: item.name, offset: state.offset });
 };
 
+/** 滚到列表顶部：给书架右下角的快捷按钮用 */
+const scrollToTop = async () => {
+    await vListRef.value?.scrollToIndex(0);
+};
+
+/** 滚到列表末尾（最后一项目标） */
+const scrollToBottom = async () => {
+    const last = viewStore.shelfFileList.length - 1;
+    if (last < 0) {
+        return;
+    }
+    await vListRef.value?.scrollToIndex(last);
+};
+
+defineExpose({ scrollToTop, scrollToBottom, snapshot });
+
 /** 回到某个路径时恢复滚动位置（找不到同名条目就留在顶部） */
 const restore = async (key = pathKey()) => {
     const memo = scrollMemo.get(key);
