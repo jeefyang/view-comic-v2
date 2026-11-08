@@ -27,6 +27,8 @@
 - `pnpm start` → `node dist/server/prod.mjs`：从自身位置往上找含 `package.json` 的目录作为项目根（所以源码位置和 `dist/server` 位置都能跑），读根目录 `.env`，校验 `dist/server/index.js` 与 `dist/index.html` 存在，动态 `import` 出 express app，挂 `express.static(dist)` + 非 `/api` 的 GET/HEAD 兜底回 `index.html`，自己 `listen`（端口读 `.env` 的 `PORT`，默认 6006），`listen` 成功后 `process.send("ready")` 配合 PM2 的 `wait_ready`，`SIGINT/SIGTERM` 优雅关闭。
 - PM2：`ecosystem.config.example.cjs` 是模板，`ecosystem.config.cjs` 由 `pnpm build`（或单独 `pnpm gen-ecosystem`）在**不存在时**复制生成，**已存在就不覆盖**；两个文件都不进 git（`.gitignore` 里有 `ecosystem.config.cjs` 与 `logs/`）。`script` 用 `path.join(__dirname, "dist/server/prod.mjs")` 绝对路径，避开 PM2 对相对路径按 `cwd` 解析的规则。
 - `pnpm build:check` = `type-check` + `build`。`pnpm build` 之所以不串 `type-check`，是因为仓库里还有 7 个历史类型错误（见下），会把整个构建卡在第一步、产物出不来；要在 CI 里卡类型就用 `build:check`。
+- **只跑 `build-only` 会连 `dist/server` 一起清掉**：`vite build` 默认 `emptyOutDir: true`，`build-only` 之后 `dist/server/{index.js,prod.mjs}` 就没了，这时重启 PM2 只会得到 `Cannot find module '...\dist\server\prod.mjs'` 并进入崩溃-重启循环（`pm2` 的 `↺` 会一路涨）。要改前端又不想整包重建，也必须跑**完整**的 `pnpm build`，然后再 `pm2 restart view-comic-v2`。
+- PM2 操作：`pm2 list` / `pm2 restart view-comic-v2` / `pm2 logs` 可直接用（早期在沙箱里会 `connect EPERM //./pipe/rpc.sock`，现在正常）。运行日志在 `logs/out-0.log` 与 `logs/error-0.log`——缩略图的 `warnOnce` 排障日志只会出现在后者里。
 - 打包（`vite build` / `vite build --ssr`）在本机需要在沙箱外跑：esbuild 起子进程会 `spawn EPERM`。飞牛（Debian，glibc ≥ 2.36）上 `sharp` 有预编译包，但**原生模块不能跨平台拷**，必须在目标机 `pnpm install`。
 
 ## 目录
@@ -71,6 +73,7 @@
 - 排障日志：`thumb.ts` 对「没有对应书库 / 路径越界或不存在 / 内部没有可用图片」三类失败各用 `warnOnce()` 打一次（同 key 只打一次，上限 500 条后清空），日志在 `logs/error-0.log`。
 - 背压：同时解码上限 2 张、排队 32 张；超了抛 `ThumbBusyError`，路由回 **503 + `Retry-After: 3`**，前端 `ThumbImage.vue` 最多退避重试 3 次，不会把图误判成「没有缩略图」。
 - 前端：`ThumbImage.vue` 先查 IndexedDB（`src/utils/thumbCache.ts`，库 `view-comic-thumbs`，最多 600 条，按时间淘汰），未命中才请求接口；全局并发 4；用 `object-fit: contain` 保证整图可见。
+- **缩略图路径要跟着条目走，不能实时读当前层级**：书架条目是 `ShelfFileItem = ViewFileType & { thumbPath: string }`，`sortShelfFileList()` 生成条目时就把当刻 `shelfPath` 拼进去；`FileItem.vue` 只读 `props.item.thumbPath`。阅读页文件列表同理，`FileListDrawer.vue` 在 `rows` 里连 `path` 一起算好再绑给 `<thumb-image :path>`。另外 `updateShelfFolder()` 必须在 `await` 之前先清空 `shelfFileList` / `shelfFolder` / `shelfScrollName`——否则切目录的一瞬间旧条目会带着新前缀去要 `compare/img-006.jpg` 这类不存在的路径，日志里表现为一批「路径不存在或越界」404。
 - 开关：`src/utils/appFeatures.ts` 的 `appFeatures.thumbnails`（设置 → 数据 → 缩略图）。关掉后前端一个请求都不发，书架与阅读页文件列表都退回图标。
 - 压缩包并发：`myStreamZip.ts` 必须**等 `init()` 完成再入缓存**（用 `opening` Promise 合并同路径的首次打开），否则并发首次访问会拿到空的 `fileList`；读取单个条目不要调 `zip.finishStream()`，它会关掉同包其它请求的流。
 
@@ -104,4 +107,3 @@
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - 书架排序偏好未持久化（刷新回默认）；`rar` 仍被当普通文件处理
 - 视频文件只做了类型角标，未取首帧缩略图
-- **书架 / 阅读页的缩略图路径竞态还没修**：`FileItem.vue` 的 `thumbPath` 是 `[...viewStore.shelfPath, item.name].join("/")` 实时算的，`FileListDrawer.vue` 的 `pagePath` 也是实时读 `basePath`；切目录 / 换书的一瞬间旧行会带着新前缀发请求，于是出现 `compare/img-006.jpg`、`number/img-004.jpg` 这种不存在的路径（404，日志里那批「路径不存在或越界」）。修法是让条目自己带 `thumbPath` / `path`，并在 `updateShelfFolder()` 里先清空旧列表

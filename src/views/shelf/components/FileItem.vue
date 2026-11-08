@@ -36,13 +36,13 @@ import { FolderFilled, FileCopyRound } from "@vicons/material";
 import { FileZipFilled, FileImageFilled } from "@vicons/antd";
 import { ResizeVideo24Filled } from "@vicons/fluent";
 import ThumbImage from "@/components/ThumbImage.vue";
-import { useViewStore } from "@/stores/view";
+import { useViewStore, type ShelfFileItem } from "@/stores/view";
 
 const themeVars = useThemeVars();
 const viewStore = useViewStore();
 
 const props = defineProps<{
-    item: ViewFileType;
+    item: ShelfFileItem;
 }>();
 
 const emits = defineEmits<{
@@ -51,14 +51,11 @@ const emits = defineEmits<{
 
 const editUUID = computed(() => viewStore.curLibrary?.editUUID ?? "");
 
-/** 需要缩略图的类型；视频暂不取帧，先留图标 */
-const thumbPath = computed(() => {
-    const item = props.item;
-    if (item.isDir || item.extType === "image" || item.extType === "zip") {
-        return [...viewStore.shelfPath, item.name].join("/");
-    }
-    return "";
-});
+/**
+ * 缩略图路径跟着条目走（`sortShelfFileList()` 生成列表时就写好了），
+ * 不再现算 `[...shelfPath, item.name]` —— 那样点进目录的瞬间旧行会拿新前缀发请求，全是 404。
+ */
+const thumbPath = computed(() => props.item.thumbPath || "");
 
 const icon = computed(() => {
     const item = props.item;

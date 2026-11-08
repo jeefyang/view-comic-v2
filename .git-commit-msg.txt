@@ -1,0 +1,10 @@
+fix(shelf): 缩略图路径随条目走，修掉切目录瞬间的 404
+
+书架条目改成 ShelfFileItem，thumbPath 在 sortShelfFileList() 时一次算好，
+FileItem 只读 props.item.thumbPath；updateShelfFolder() 在 await 前先清空旧列表。
+阅读页文件列表把 path 一起算进 rows，不再在模板里实时拼 basePath。
+
+原来切目录 / 换书的一瞬间，旧行会带着新前缀去要 compare/img-006.jpg 这类
+不存在的路径，日志里就是那批「路径不存在或越界」404。
+
+顺带把 build-only 会清空 dist/server（导致 pm2 起来找不到 prod.mjs）记进文档。

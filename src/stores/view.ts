@@ -5,13 +5,22 @@ import type { ResSendType } from '@common/apis/tools/apiUrlsTrans';
 import { normalizeBasePath, normalizeFileName } from '@/utils/fileUrl';
 import { sortFileList } from '@common/utils/nameSort';
 
+/**
+ * 书架列表项：`thumbPath` 在生成列表那一刻就固定下来。
+ * 不要用 `[...shelfPath, item.name].join('/')` 现算 —— 点进目录时 `shelfPath` 立刻变了、
+ * 列表数据却要等接口回来，这一瞬间旧行会带着新前缀去要缩略图
+ * （于是日志里出现 `compare/img-006.jpg`、`number/img-004.jpg` 这种根本不存在的路径）。
+ */
+export type ShelfFileItem = ViewFileType & { thumbPath: string };
+
+
 export const useViewStore = defineStore('view', () => {
     const saveKey = "view";
     const libraryList = ref([] as JsonLibrary[]);
     const curLibrary = ref(<Partial<JsonLibrary>>{});
     const shelfPath = ref(<string[]>[]);
     const shelfFolder = ref(<viewFolderType | undefined>undefined);
-    const shelfFileList = ref(<ViewFileType[]>[]);
+    const shelfFileList = ref(<ShelfFileItem[]>[]);
     const shelfSearchKey = ref("");
     const shelfSortType = ref(<SortNameType>"updateTime");
     const shelfSortValue = ref(<1 | -1>1);
@@ -66,6 +75,10 @@ export const useViewStore = defineStore('view', () => {
             return;
         }
         shelfLoading.value = true;
+        // 先清空旧列表：目录切换后旧条目若还留着，它们会带着新的 shelfPath 去要缩略图，必定 404
+        shelfFileList.value = [];
+        shelfFolder.value = undefined;
+        shelfScrollName.value = "";
         const res = await viewFetch.request("folder", { editUUID: curLibrary.value.editUUID!, path: shelfPath.value.join('/') });
         shelfLoading.value = false;
         if (res.code != 200) {
@@ -105,8 +118,17 @@ export const useViewStore = defineStore('view', () => {
         if (key) {
             list = list.filter((item) => item.name.toLowerCase().includes(key) || (item.ext || "").toLowerCase().includes(key));
         }
-        const dirs = sortFileList(list.filter((item) => item.isDir), shelfSortType.value, shelfSortValue.value);
-        const files = sortFileList(list.filter((item) => !item.isDir), shelfSortType.value, shelfSortValue.value);
+        // 缩略图路径在这一刻定死（前缀 = 生成列表时的 shelfPath），之后导航/换书都不会改它
+        const prefix = shelfPath.value.join("/");
+        const toShelfItem = (item: ViewFileType): ShelfFileItem => ({
+            ...item,
+            // 文件夹 / 图片 / 压缩包要缩略图；视频暂不取帧
+            thumbPath: item.isDir || item.extType === "image" || item.extType === "zip"
+                ? [prefix, item.name].filter(Boolean).join("/")
+                : ""
+        });
+        const dirs = sortFileList(list.filter((item) => item.isDir), shelfSortType.value, shelfSortValue.value).map(toShelfItem);
+        const files = sortFileList(list.filter((item) => !item.isDir), shelfSortType.value, shelfSortValue.value).map(toShelfItem);
         // 正序：文件夹在前；反序：整个列表倒转，文件夹排到最后（同资源管理器里按「反序」排完的样子）
         shelfFileList.value = shelfSortValue.value == 1 ? [...dirs, ...files] : [...files, ...dirs];
         shelfScrollName.value = "";

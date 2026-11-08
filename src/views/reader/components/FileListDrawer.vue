@@ -31,7 +31,7 @@
                             @click="onJump(item.no - 1)"
                         >
                             <div v-if="appFeatures.thumbnails" class="fl-thumb">
-                                <thumb-image :edit-uuid="editUUID" :path="pagePath(item)" :alt="item.name" />
+                                <thumb-image :edit-uuid="editUUID" :path="item.path" :alt="item.name" />
                             </div>
                             <span class="fl-index">{{ item.no }}</span>
                             <span class="fl-name">{{ item.name }}</span>
@@ -76,11 +76,18 @@ const basePath = computed(() => viewStore.comicFileList?.basePath ?? "");
 /**
  * 每页缩略图的路径：目录书就是「目录/文件名」，压缩包书是「xxx.zip/包内条目」，
  * 服务端两种都能解析（包里那种会在包里按名字找条目）。
+ *
+ * 序号与缩略图路径都在这里一次性算好挂到行上：虚拟列表换书/换目录时若还挂着旧行，
+ * 现算 `[basePath, item.name]` 会拼出「新前缀 + 旧文件名」这种不存在的路径（404）。
  */
-const pagePath = (item: ComicFileType) => [basePath.value, item.name].filter(Boolean).join("/");
-
-/** 序号自己算：虚拟列表的插槽里拿不到可靠的下标，直接预生成更稳 */
-const rows = computed(() => props.pages.map((item, index) => ({ ...item, no: index + 1 })));
+const rows = computed(() => {
+    const prefix = basePath.value;
+    return props.pages.map((item, index) => ({
+        ...item,
+        no: index + 1,
+        path: [prefix, item.name].filter(Boolean).join("/")
+    }));
+});
 
 const onShow = (value: boolean) => {
     emit("update:show", value);
