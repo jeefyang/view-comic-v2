@@ -52,6 +52,8 @@
 - 页面顺序统一来自 `src/views/reader/readerPages.ts` 的 `readerPages`（按 `readerSort` 排序后的数组），**`currentIndex` 是它的下标**
 - 三个索引要分清：`item.index` 是服务端序号（只用于拼图片地址）；`page.order` 是「排序后第几张图」；`page.sortIndex` 是「第几屏」（双开页一张图占两屏）
 - 进度存 `readerProgress`（localStorage），key 为 `editUUID::basePath::fileName`，值同时记 `index` 与 `name`，排序变化后按 name 重定位
+- 单页模式（`modes/paged/PagedReader.vue`）的适配靠 `sizeMap`（真实宽高）+ `viewSize`（可用视口）喂给 `modes/fitStrategies.ts` 的 `computeFit()`。`sizeMap` 的键必须用**文件名**（`sizeKey()`，没有名字才退回 `index`）：用序号会在换排序后把上一张图的尺寸套到新图上，表现为「选了旋转适应却转错、图又小又歪」；`onImgLoad` 必须**每次都用 `naturalWidth/naturalHeight` 覆写**（不能写成「已有就跳过」，错值会永久固化）；换书（`comicFileList.basePath` 变化）时 `watch` 清空整张缓存。
+- `computeFit()` 在任一侧尺寸为 0 时返回 `identity`（1:1），会让「旋转 / 缩放」看起来完全失效；`PagedReader` 的 `fit` 因此在尺寸未知时返回 `null` 并由 CSS 兜底，等 `measure()` 拿到真实值再算，不要改回直连 `computeFit`。
 
 ### 图片地址
 统一走 `src/utils/fileUrl.ts` 的 `buildFileUrl(editUUID, index, basePath)`，不要手拼 `api/file/...`。
@@ -116,6 +118,7 @@
 - `#main` 是定高 + `overflow: hidden` 的弹性容器，页面内容超一屏要自己开滚动区（参考 `settingsView.vue` 的 `.parent`：`height: 100%; min-height: 0; overflow-y: auto;` + 隐藏滚动条）。
 - **滚动条统一走 `src/assets/scrollbar.css`**（在 `main.css` 之后引入）：全局 `*` 规则统一成 8px、圆角 999px、半透明灰滑块、轨道透明，Firefox 用 `scrollbar-width: thin` + `scrollbar-color` 两套写法都要留。naive-ui 自带的 `n-scrollbar` 不用 CSS 类而用 `--n-scrollbar-*` 变量，且这些变量内联写在元素上 → 只能靠 `.n-scrollbar { --n-scrollbar-color: ... !important }` 覆盖。抽屉（`n-drawer-content`）要加 `:native-scrollbar="false"` 才会用这套；书架列表、`VirtualList`、瀑布流、设置页仍刻意隐藏滚动条，它们的选择器优先级高于全局 `*` 规则，别一起改掉。
 - **Range 探测会污染浏览器缓存**：`src/utils/decodeSize.ts` 为了只取文件头，用 `Range: bytes=0-65536` 打**与 `<img>` 相同的 URL**。如果服务端不认 Range 却回 `200`（还带 `immutable`），浏览器会把这条 64KB 残包当完整内容存一年，紧接着的 `<img>` 命中缓存只拿到前 64KB —— 渐进式 JPEG（SOF `FF C2`）从 64KB 能解出「完整尺寸 + 只有低频扫描」，表现就是**整屏糊图**，且只有大于 64KB 的图中招，开 DevTools 禁用缓存就正常。改法只能是服务端发真 206，已经写坏的缓存靠 `FILE_URL_VERSION` 升版本作废。
+- **尺寸缓存按序号索引会串号**：`PagedReader` 的 `sizeMap` 曾经用 `String(target.index)` 做键、且 `onImgLoad` 里「已有就 return」。换排序后同一个 `index` 指向另一张图，缓存里还是旧图的宽高（横图尺寸套在竖图上）→ `computeFit` 是按这份错尺寸算的，于是把竖图判成横图、选了 90° 旋转塞进错误盒子，`object-fit: contain` 再缩一次，看着又小又歪；而且真图加载回来也不纠正。**判断方法**：看 `<img>` 的 `style.width/height` 比值是否等于图片真实宽高比（如 `609.221/344 = 1.771` vs `550/780 = 0.705` 就说明尺寸来源错了），`transform` 的 `matrix(0,1,-1,0,…)` 只代表转 90°（转两次是 `matrix(-1,0,0,-1,…)`，不存在）。现在键改成文件名、每次加载都覆写、换书清空，切换适配方式/换排序才会立刻正确。
 - **`node-stream-zip` 的 `error` 必须接住**：`myStreamZip.ts` 的 `init()` 里要先常驻 `obj.on("error", ...)` 把错误记进 `lastError` 并 reject 打开，否则 `Bad archive` 会变成未处理的 `'error'` 事件直接杀进程；缓存命中前还要检查 `lastError` 并剔除坏实例。另外 `server/index.ts` 用 `globalThis.__viewComicCrashGuard` 只注册一次 `uncaughtException` / `unhandledRejection` 兜底（只打日志不退出；不能重复注册，dev 下 `server/index.ts` 会被反复加载）。
 - **换行符不统一**：`src/views/shelf/shelfView.vue` 等文件是 CRLF，而 `docs/project-memory.md` 是 LF。`edit` 工具的多行 `old_string` 在 CRLF 文件里经常匹配不上（不是文本不对，是换行不同），改用单行锚点，或用 PowerShell 的 `Get-Content -Raw` + `Set-Content -NoNewline` 追加整段。
 - 依赖只留用得上的：`adm-zip` / `fflate` / `iconv-lite` / `yauzl` / `tsx` / `vite-plugin-inspect` / `vite-plugin-node` / `vite-plugin-vue-devtools` 已清理，别再顺手装回来。
@@ -126,7 +129,7 @@
 - 加载体验：每页加载占位（转圈 / 慢网提示 / 失败点击重试，自动重试 2 次）；慢网（2G/3G）自动降低预加载与并发
 - 点击区域：可拖拽 / 八向改大小 / 2% 吸附；动作含翻页、切 UI、设置、跳页、返回书架 / 书库、切换适配方式；预设布局；布局上传到个人账户（`userConfig.tapZoneLayouts`，同名覆盖）
 - 设置页：阅读 / 翻页 / 账号 / 数据四个标签；阅读设置另有半屏抽屉
-- 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先；顶栏面包屑第一格是书库名（点回 `/library`），根目录显示「根目录」且回根 / 返上一级按钮置灰；加载时出骨架屏而非空态；按钮组右侧显示「共 N 项」；滚动位置按目录记忆（离开再回来、进出子目录都停在原位）；排序 / 过滤 / 搜索词会落盘
+- 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先；顶栏面包屑第一格是书库名（点它回**当前书库的根目录**，不跳书库页），其余是 `shelfPath` 各段，根目录不再额外显示「根目录」字样，此时回根 / 返上一级两个按钮置灰；加载时出骨架屏而非空态；按钮组右侧显示「共 N 项」；滚动位置按目录记忆（离开再回来、进出子目录都停在原位）；排序 / 过滤 / 搜索词会落盘
 - 历史：导航栏「历史」页，两个标签页分别列历史与书签；记打开过的书（含页码 / 总页数）与打开过的书库，云端同步（4 秒防抖增量推送，离开阅读页立即推）；历史与书签卡片都显示「书库名 / 路径」，可单条删除、可清空
 - 书签：阅读页悬浮菜单与点击区域动作都能加 / 取消当前页书签，书签可点了直接跳到那本书那一页
 - 滚动条：全局统一成细圆角半透明滑块（`src/assets/scrollbar.css`），两个抽屉改用 naive 滚动条
@@ -141,3 +144,4 @@
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - `rar` 仍被当普通文件处理（书架排序 / 过滤 / 搜索词已持久化，别再当待办）
 - 视频文件只做了类型角标，未取首帧缩略图
+- 超大图（几十 MB / 上亿像素）在浏览器里仍可能解不出来：曾做过「`/api/file?max=` + sharp 降采样 + 前端按像素自动切换」，实测用户那边大图依旧打不开，已整段撤回（`d163ade revert(reader): 撤掉超大图降采样`，`server/utils/largeImage.ts` 已删除）。要重做必须先拿到真实样张（本机三库最大只有 11.1MB / 8192×6144），别凭猜再动 `api.ts` 与 `PagedReader`。

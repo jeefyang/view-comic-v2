@@ -78,8 +78,18 @@ const total = computed(() => list.value.length);
 
 const containerRef = ref<HTMLElement>();
 const viewSize = reactive({ width: 0, height: 0 });
-/** 每页真实尺寸，按页序号缓存，避免来回翻页重复探测 */
+/** 每页真实尺寸，按页文件名缓存：换排序后 index 会指向别的图，用序号会串号 */
 const sizeMap = reactive<Record<string, { width: number; height: number }>>({});
+
+// 换书（basePath 变了）就把尺寸缓存清空，别让上一本的尺寸串过来
+watch(
+    () => viewStore.comicFileList?.basePath,
+    () => {
+        for (const key of Object.keys(sizeMap)) {
+            delete sizeMap[key];
+        }
+    }
+);
 
 const clampIndex = (i: number) => {
     if (!Number.isFinite(i)) {
@@ -167,7 +177,8 @@ const onRetry = () => {
     startSlowHint();
 };
 
-const sizeKey = (target: typeof page.value) => (target ? String(target.index) : "");
+/** 缓存键用文件名；没有名字时才退回序号 */
+const sizeKey = (target: typeof page.value) => (target ? target.name || String(target.index) : "");
 
 const pageSize = computed(() => {
     const current = page.value;
@@ -436,11 +447,16 @@ const onImgLoad = (e: Event) => {
     retrying.value = false;
     slow.value = false;
     const current = page.value;
-    if (!current || sizeMap[sizeKey(current)]) {
+    if (!current) {
         return;
     }
+    // 真图尺寸永远最权威：每次都覆写，缓存里就算有错值也能被纠正过来
     if (el.naturalWidth > 0 && el.naturalHeight > 0) {
-        sizeMap[sizeKey(current)] = { width: el.naturalWidth, height: el.naturalHeight };
+        const key = sizeKey(current);
+        const prev = sizeMap[key];
+        if (!prev || prev.width !== el.naturalWidth || prev.height !== el.naturalHeight) {
+            sizeMap[key] = { width: el.naturalWidth, height: el.naturalHeight };
+        }
     }
 };
 
