@@ -1,4 +1,4 @@
-import { epubTypeList, imageTypeList, mobiTypeList, pdfTypeList, zipTypeList } from "@common/utils/ext";
+import { epubTypeList, imageTypeList, mobiTypeList, pdfTypeList, videoTypeList, zipTypeList } from "@common/utils/ext";
 import path from "path";
 
 export function getSizeStr(size: number) {
@@ -22,6 +22,7 @@ export function getFileExt(p: string) {
         const list: { [x in ViewFileExtType]?: string[] } = {
             "zip": zipTypeList,
             "image": imageTypeList,
+            "video": videoTypeList,
             "pdf": pdfTypeList,
             "epub": epubTypeList,
             "mobi": mobiTypeList

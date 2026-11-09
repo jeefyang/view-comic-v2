@@ -365,6 +365,14 @@ const createContentDiv = (page: WaterfallPageType) => {
     if (page.half !== undefined) {
         div.style.overflow = "hidden";
     }
+    // 视频页暂不在瀑布流里播放，也不要走图片尺寸探测/预加载链路
+    if (page.extType === "video") {
+        const hint = document.createElement("div");
+        hint.className = "video-unsupported";
+        hint.textContent = "视频暂不支持在瀑布流播放，请切换到单页模式";
+        div.appendChild(hint);
+        return div;
+    }
     const img = new Image();
     img.alt = "";
     img.decoding = "async";
@@ -773,5 +781,19 @@ onBeforeUnmount(() => {
 .main {
     width: 100%;
     height: 100%;
+}
+
+/* 容器由脚本动态创建，scoped 样式要用 :deep 才能命中 */
+.main :deep(.video-unsupported) {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 24px;
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 14px;
+    text-align: center;
+    background: #111;
 }
 </style>

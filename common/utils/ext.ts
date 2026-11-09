@@ -1,6 +1,8 @@
 import path from "path";
 export const zipTypeList = ['zip', "rar", "cbz"];
 export const imageTypeList = ['png', "jpg", "jpeg", "gif", "webp", "apng"];
+/** 浏览器原生可播放的视频格式；AVI/MKV 等不在列表内 */
+export const videoTypeList = ["mp4", "webm"];
 /** 容器书：页在文件内部，服务端按需渲染成图（server/utils/book） */
 export const pdfTypeList = ["pdf"];
 export const epubTypeList = ["epub"];
@@ -15,6 +17,8 @@ export const contentTypeList = {
     webp: 'image/webp',
     apng: 'image/apng',
     bmp: 'image/bmp',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
     pdf: 'application/pdf',
     epub: 'application/epub+zip',
     mobi: 'application/x-mobipocket-ebook',

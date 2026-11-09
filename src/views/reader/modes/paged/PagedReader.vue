@@ -2,7 +2,27 @@
     <div ref="containerRef" class="paged-reader" :class="{ 'is-pannable': pannable }" :style="pagePaddingStyle">
         <div class="page-box">
             <div v-if="page && pageUrl && isSpread" :key="`${pageUrl}-spread`" class="spread-box" :style="spreadBoxStyle">
+                <video
+                    v-if="isVideo"
+                    :key="`${displayUrl}-${half}-video`"
+                    ref="videoEl"
+                    :src="displayUrl"
+                    class="page-img spread-img"
+                    :class="{ 'is-loading': loading }"
+                    :style="spreadImgStyle"
+                    muted
+                    loop
+                    playsinline
+                    webkit-playsinline
+                    preload="metadata"
+                    @loadedmetadata="onVideoLoadedMetadata"
+                    @canplay="onVideoCanPlay"
+                    @play="onVideoPlay"
+                    @pause="onVideoPause"
+                    @error="onImgError"
+                ></video>
                 <img
+                    v-else
                     :src="displayUrl"
                     class="page-img spread-img"
                     :class="{ 'is-loading': loading }"
@@ -14,6 +34,25 @@
                     @error="onImgError"
                 />
             </div>
+            <video
+                v-else-if="page && pageUrl && isVideo"
+                :key="`${displayUrl}-${half}-video`"
+                ref="videoEl"
+                :src="displayUrl"
+                class="page-img"
+                :class="{ 'is-loading': loading }"
+                :style="imgStyle"
+                muted
+                loop
+                playsinline
+                webkit-playsinline
+                preload="metadata"
+                @loadedmetadata="onVideoLoadedMetadata"
+                @canplay="onVideoCanPlay"
+                @play="onVideoPlay"
+                @pause="onVideoPause"
+                @error="onImgError"
+            ></video>
             <img
                 v-else-if="page && pageUrl"
                 :key="pageUrl"
@@ -37,11 +76,21 @@
             />
         </div>
         <tap-zone-layer :zones="tapZones" :pannable="pannable" @action="onZoneAction" @pan="onPan" />
+        <button
+            v-if="isVideo && pageUrl && !loading && !failed"
+            type="button"
+            class="video-play-btn"
+            :class="`is-${readerSettings.videoPlayButtonPosition}`"
+            :aria-label="videoPlaying ? '暂停视频' : '播放视频'"
+            @click.stop="toggleVideo"
+        >
+            {{ videoPlaying ? "❚❚" : "▶" }}
+        </button>
     </div>
 </template>
 
 <script lang="ts" setup>
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from "vue";
 import { useViewStore } from "@/stores/view";
 import { useConfigStore } from "@/stores/config";
 import { readerPages } from "@/views/reader/readerPages";
@@ -100,6 +149,8 @@ const clampIndex = (i: number) => {
 
 const index = ref(clampIndex(props.jump));
 const page = computed(() => list.value[index.value]);
+/** 视频页只做播放器，不进入图片尺寸探测与预取链路 */
+const isVideo = computed(() => page.value?.extType === "video");
 
 /** 与瀑布流一致的取图地址 */
 const urlOf = (target: typeof page.value) => {
@@ -180,7 +231,7 @@ const onRetry = () => {
 /** 缓存键用文件名；没有名字时才退回序号 */
 const sizeKey = (target: typeof page.value) => (target ? target.name || String(target.index) : "");
 
-const pageSize = computed(() => {
+const rawPageSize = computed(() => {
     const current = page.value;
     if (!current) {
         return { width: 0, height: 0 };
@@ -192,8 +243,28 @@ const pageSize = computed(() => {
     return { width: current.width ?? 0, height: current.height ?? 0 };
 });
 
-/** 宽度大于高度即视为双开页（横图） */
+/** 视频在 metadata 回来前没有真实尺寸，先按 16:9 占位 */
+const hasRealVideoSize = computed(() => {
+    if (!isVideo.value) {
+        return true;
+    }
+    const { width, height } = rawPageSize.value;
+    return width > 0 && height > 0;
+});
+
+const pageSize = computed(() => {
+    const raw = rawPageSize.value;
+    if (isVideo.value && (!raw.width || !raw.height)) {
+        return { width: 16, height: 9 };
+    }
+    return raw;
+});
+
+/** 宽度大于高度即视为双开页（横图）；视频尺寸未知时先不拆 */
 const isLandscape = computed(() => {
+    if (isVideo.value && !hasRealVideoSize.value) {
+        return false;
+    }
     const { width, height } = pageSize.value;
     return width > 0 && height > 0 && width > height;
 });
@@ -303,8 +374,12 @@ const MAX_PRELOAD = 5;
 const maxPreload = () => (slowNetwork.value ? 2 : MAX_PRELOAD);
 
 const ensureSize = (target: typeof page.value) => {
+    // 视频的尺寸来自 loadedmetadata，不能用图片的 Range + imageSize 探测
+    if (!target || target.extType === "video") {
+        return;
+    }
     const key = sizeKey(target);
-    if (!target || !key || sizeMap[key]) {
+    if (!key || sizeMap[key]) {
         return;
     }
     if (target.width && target.height) {
@@ -338,7 +413,7 @@ const preloadNearby = () => {
     const targets = [index.value - 1, index.value + 1].filter(i => i >= 0 && i < total.value);
     for (const i of targets) {
         const target = list.value[i];
-        if (!target) {
+        if (!target || target.extType === "video") {
             continue;
         }
         const url = urlOf(target);
@@ -478,8 +553,138 @@ const onImgError = () => {
     retrying.value = false;
 };
 
-// 换页时重置加载态
-watch(pageUrl, () => resetLoadState(), { immediate: true });
+/* ---------- 视频播放 ---------- */
+const videoEl = ref<HTMLVideoElement>();
+const videoPlaying = ref(false);
+/** 用户主动暂停后，换页/重新可见时不要自动续播 */
+const videoUserPaused = ref(false);
+/** 当前是否「想要播放」：play() 是异步的，用它压住点击暂停的竞态 */
+const videoWanted = ref(false);
+let playRequest = 0;
+
+const markVideoReady = () => {
+    clearLoadTimers();
+    loading.value = false;
+    failed.value = false;
+    retrying.value = false;
+    slow.value = false;
+};
+
+const pauseVideo = () => {
+    playRequest += 1;
+    videoWanted.value = false;
+    const el = videoEl.value;
+    if (el && !el.paused) {
+        el.pause();
+    }
+    videoPlaying.value = false;
+};
+
+const tryAutoPlay = async () => {
+    if (!isVideo.value || videoUserPaused.value) {
+        return;
+    }
+    const el = videoEl.value;
+    if (!el) {
+        return;
+    }
+    const token = ++playRequest;
+    videoWanted.value = true;
+    try {
+        await el.play();
+    } catch {
+        // 自动播放被拦截时保留按钮，让用户手动点
+        if (token === playRequest) {
+            videoWanted.value = false;
+        }
+    }
+    if (token !== playRequest) {
+        // 期间用户点了暂停，或已经换到别的视频
+        if (!videoWanted.value) {
+            el.pause();
+        }
+        return;
+    }
+    if (!videoWanted.value) {
+        el.pause();
+    }
+};
+
+const toggleVideo = () => {
+    const el = videoEl.value;
+    if (!el) {
+        return;
+    }
+    if (videoWanted.value || !el.paused) {
+        videoUserPaused.value = true;
+        pauseVideo();
+        return;
+    }
+    videoUserPaused.value = false;
+    void tryAutoPlay();
+};
+
+const onVideoLoadedMetadata = (e: Event) => {
+    const el = e.target as HTMLVideoElement;
+    markVideoReady();
+    const current = page.value;
+    if (current && el.videoWidth > 0 && el.videoHeight > 0) {
+        const key = sizeKey(current);
+        const prev = sizeMap[key];
+        if (!prev || prev.width !== el.videoWidth || prev.height !== el.videoHeight) {
+            sizeMap[key] = { width: el.videoWidth, height: el.videoHeight };
+        }
+    }
+    void tryAutoPlay();
+};
+
+const onVideoCanPlay = () => {
+    markVideoReady();
+    void tryAutoPlay();
+};
+
+const onVideoPlay = () => {
+    videoPlaying.value = true;
+};
+
+const onVideoPause = () => {
+    videoWanted.value = false;
+    videoPlaying.value = false;
+};
+
+// 换页时重置加载态；视频页同时把播放状态归零，等新元素挂载后自动播放
+watch(
+    pageUrl,
+    () => {
+        pauseVideo();
+        videoUserPaused.value = false;
+        resetLoadState();
+        if (isVideo.value) {
+            void nextTick(() => tryAutoPlay());
+        }
+    },
+    { immediate: true }
+);
+
+// 双开页换半屏时 video 按 key 重建，重新从头播
+watch(half, () => {
+    if (!isVideo.value) {
+        return;
+    }
+    pauseVideo();
+    videoUserPaused.value = false;
+    void nextTick(() => tryAutoPlay());
+});
+
+// 视频 metadata 回来后可能才知道是横屏，拆半屏会让 video 分支重建
+watch(isSpread, () => {
+    if (!isVideo.value) {
+        return;
+    }
+    pauseVideo();
+    videoUserPaused.value = false;
+    void nextTick(() => tryAutoPlay());
+});
 
 const onKeydown = (e: KeyboardEvent) => {
     // 翻页方向只管双开页的左右先后，不影响「下一页」的方向键语义
@@ -529,16 +734,21 @@ onMounted(() => {
 onActivated(() => {
     measure();
     window.addEventListener("keydown", onKeydown);
+    if (isVideo.value) {
+        void nextTick(() => tryAutoPlay());
+    }
 });
 
 onDeactivated(() => {
     window.removeEventListener("keydown", onKeydown);
+    pauseVideo();
 });
 
 onBeforeUnmount(() => {
     resizeObserver?.disconnect();
     resizeObserver = undefined;
     clearLoadTimers();
+    pauseVideo();
     window.removeEventListener("keydown", onKeydown);
     for (const img of preloaded.values()) {
         img.src = "";
@@ -601,6 +811,55 @@ onBeforeUnmount(() => {
     position: absolute;
     top: 0;
     max-width: none;
+}
+
+/* 视频页播放/暂停按钮：z-index 必须高于 tap-zone-layer */
+.video-play-btn {
+    position: absolute;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.45);
+    color: #fff;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    backdrop-filter: blur(2px);
+}
+
+.video-play-btn.is-top-left {
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
+.video-play-btn.is-bottom-left {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
+.video-play-btn.is-top-right {
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+}
+
+.video-play-btn.is-bottom-right {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    right: calc(12px + env(safe-area-inset-right, 0px));
+}
+
+.video-play-btn.is-center {
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
 }
 
 .page-empty {
