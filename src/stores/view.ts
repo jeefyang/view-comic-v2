@@ -120,10 +120,12 @@ export const useViewStore = defineStore('view', () => {
         }
         // 缩略图路径在这一刻定死（前缀 = 生成列表时的 shelfPath），之后导航/换书都不会改它
         const prefix = shelfPath.value.join("/");
+        // 老数据 / 旧接口可能没带 extType，按扩展名再兜一层
+        const isVideoItem = (item: ViewFileType) => item.extType === "video" || ["mp4", "webm"].includes((item.ext || "").toLowerCase());
         const toShelfItem = (item: ViewFileType): ShelfFileItem => ({
             ...item,
-            // 文件夹 / 图片 / 压缩包 / 电子书要缩略图；视频暂不取帧，其它类型也不试
-            thumbPath: item.isDir || item.extType === "image" || item.extType === "zip" || item.extType === "pdf" || item.extType === "epub" || item.extType === "mobi"
+            // 文件夹 / 图片 / 压缩包 / 电子书 / 视频要缩略图；其它类型不试
+            thumbPath: item.isDir || item.extType === "image" || item.extType === "zip" || item.extType === "pdf" || item.extType === "epub" || item.extType === "mobi" || isVideoItem(item)
                 ? [prefix, item.name].filter(Boolean).join("/")
                 : ""
         });

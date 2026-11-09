@@ -16,7 +16,9 @@
                     webkit-playsinline
                     preload="metadata"
                     @loadedmetadata="onVideoLoadedMetadata"
+                    @loadeddata="onVideoSizeChanged"
                     @canplay="onVideoCanPlay"
+                    @resize="onVideoSizeChanged"
                     @play="onVideoPlay"
                     @pause="onVideoPause"
                     @error="onVideoError"
@@ -48,7 +50,9 @@
                 webkit-playsinline
                 preload="metadata"
                 @loadedmetadata="onVideoLoadedMetadata"
+                @loadeddata="onVideoSizeChanged"
                 @canplay="onVideoCanPlay"
+                @resize="onVideoSizeChanged"
                 @play="onVideoPlay"
                 @pause="onVideoPause"
                 @error="onVideoError"
@@ -624,35 +628,53 @@ const toggleVideo = () => {
     void tryAutoPlay();
 };
 
+/** 视频的真实尺寸可能在 metadata / loadeddata / canplay 任一时机才就绪，每次都校正一遍 */
+const rememberVideoSize = (el: HTMLVideoElement) => {
+    if (el !== videoEl.value) {
+        return;
+    }
+    const current = page.value;
+    if (!current || el.videoWidth <= 0 || el.videoHeight <= 0) {
+        return;
+    }
+    const key = sizeKey(current);
+    const prev = sizeMap[key];
+    if (prev && prev.width === el.videoWidth && prev.height === el.videoHeight) {
+        return;
+    }
+    sizeMap[key] = { width: el.videoWidth, height: el.videoHeight };
+};
+
+const onVideoSizeChanged = (e: Event) => {
+    rememberVideoSize(e.target as HTMLVideoElement);
+};
+
 const onVideoLoadedMetadata = (e: Event) => {
     const el = e.target as HTMLVideoElement;
     if (el !== videoEl.value) {
         return;
     }
     markVideoReady();
-    const current = page.value;
-    if (current && el.videoWidth > 0 && el.videoHeight > 0) {
-        const key = sizeKey(current);
-        const prev = sizeMap[key];
-        if (!prev || prev.width !== el.videoWidth || prev.height !== el.videoHeight) {
-            sizeMap[key] = { width: el.videoWidth, height: el.videoHeight };
-        }
-    }
+    rememberVideoSize(el);
     void tryAutoPlay();
 };
 
 const onVideoCanPlay = (e: Event) => {
-    if (e.target !== videoEl.value) {
+    const el = e.target as HTMLVideoElement;
+    if (el !== videoEl.value) {
         return;
     }
+    rememberVideoSize(el);
     markVideoReady();
     void tryAutoPlay();
 };
 
 const onVideoPlay = (e: Event) => {
-    if (e.target !== videoEl.value) {
+    const el = e.target as HTMLVideoElement;
+    if (el !== videoEl.value) {
         return;
     }
+    rememberVideoSize(el);
     videoPlaying.value = true;
 };
 
@@ -798,7 +820,12 @@ onBeforeUnmount(() => {
 
 .page-img {
     display: block;
+    /* 旋转/宽度适应时布局盒可能比视口大，别被 flex 压缩或 UA 的 max 尺寸限制 */
+    flex: 0 0 auto;
+    max-width: none;
+    max-height: none;
     object-fit: contain;
+    transform-origin: center center;
     user-select: none;
     -webkit-user-drag: none;
     will-change: transform;

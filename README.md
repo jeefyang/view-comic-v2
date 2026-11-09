@@ -29,6 +29,14 @@ See [Vite Configuration Reference](https://vite.dev/config/).
 pnpm install
 ```
 
+### 视频缩略图依赖（可选）
+
+书架和阅读页文件列表里的 MP4 / WebM 缩略图由服务端用 `ffmpeg` 截一帧生成。没有安装 `ffmpeg` 时功能不受影响，视频条目会回退成图标；在线播放也不依赖它。
+
+- 默认从 `PATH` 里找 `ffmpeg`；也可以在 `.env` 里显式指定 `FFMPEG_PATH`。
+- Windows 开发机如果只装了 Chocolatey 版，服务端会自动尝试 `C:/ProgramData/chocolatey/lib/ffmpeg-full/tools/ffmpeg/bin/ffmpeg.exe`。
+- Linux 生产环境建议 `apt install ffmpeg`（或对应的包管理器），并确认运行 PM2 的用户能执行它。
+
 ### Compile and Hot-Reload for Development
 
 ```sh

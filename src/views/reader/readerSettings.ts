@@ -7,6 +7,8 @@ export type PageDirectionType = "ltr" | "rtl";
 export type VideoPlayPositionType = "top-left" | "bottom-left" | "top-right" | "bottom-right" | "center";
 
 const STORAGE_KEY = "readerSettings";
+/** settingsVersion 2：视频播放按钮默认从左上移到右下，旧数据要一次性迁移 */
+const SETTINGS_VERSION = 2;
 
 const defaults = {
     /** 阅读模式：瀑布流 / 单页翻页 */
@@ -18,7 +20,9 @@ const defaults = {
     /** 单页模式：宽度大于高度的双开页自动拆成左右两屏 */
     splitSpread: false,
     /** 单页视频页播放/暂停按钮的位置 */
-    videoPlayButtonPosition: "top-left" as VideoPlayPositionType
+    videoPlayButtonPosition: "bottom-right" as VideoPlayPositionType,
+    /** 设置结构版本，用于旧数据迁移 */
+    settingsVersion: SETTINGS_VERSION
 };
 
 export type ReaderSettings = typeof defaults;
@@ -57,18 +61,24 @@ const load = () => {
         if (isVideoPlayPosition(obj.videoPlayButtonPosition)) {
             readerSettings.videoPlayButtonPosition = obj.videoPlayButtonPosition;
         }
+        // 旧版本默认是左上，会压住返回按钮；只迁移旧数据，不覆盖新版用户的主动选择
+        const storedVersion = typeof obj.settingsVersion === "number" ? obj.settingsVersion : 0;
+        if (storedVersion < SETTINGS_VERSION && readerSettings.videoPlayButtonPosition === "top-left") {
+            readerSettings.videoPlayButtonPosition = "bottom-right";
+            save();
+        }
     } catch {
         // 读取失败就用默认值
     }
 };
 
-const save = () => {
+function save() {
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(readerSettings));
     } catch {
         // 隐私模式下可能写不进去，忽略
     }
-};
+}
 
 export const resetReaderSettings = () => {
     Object.assign(readerSettings, defaults);

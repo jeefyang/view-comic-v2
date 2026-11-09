@@ -12,6 +12,7 @@ import { getLibCache, resolveLibRoot } from "./library.js";
 import { getMyStreamZip } from "./myStreamZip.js";
 import { resolveInsideRoot } from "./pathSafe.js";
 import { RenderBusyError, withRenderSlot } from "./renderQueue.js";
+import { isVideoName, videoFrameFromBuffer, videoFrameFromFile } from "./videoFrame.js";
 
 /** 缩略图都放这里，跟其他 json 数据同级 */
 export const THUMB_DIR = path.join(DATA_DIR, "thumbs");
@@ -270,7 +271,7 @@ export { RenderBusyError as ThumbBusyError };
 /** 简单的命中/未命中计数，方便排查「怎么老是重新生成」 */
 export const thumbStats = { hit: 0, miss: 0, busy: 0, failed: 0 };
 
-/** 取缩略图：命中磁盘直接返回，没有就按需生成；生成不了（视频/空包/无图目录）返回 undefined */
+/** 取缩略图：命中磁盘直接返回，没有就按需生成；生成不了（空包/无图目录/截不出视频帧）返回 undefined */
 export async function getThumbBuffer(editUUID: string, relPath: string, width: number): Promise<Buffer | undefined> {
     const size = isThumbWidth(width) ? width : DEFAULT_THUMB_WIDTH;
     const lib = getLibCache().find((item) => item.editUUID === editUUID);
@@ -321,7 +322,12 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
                     });
                 }
                 else {
-                    source = await zipEntryBuffer(target, containerSplit.entry);
+                    const entry = containerSplit.entry;
+                    const buffer = await zipEntryBuffer(target, entry);
+                    // 包内视频：先把条目解到内存，再交给 ffmpeg 截帧（zip 没有独立磁盘路径）
+                    source = isVideoName(entry) && buffer
+                        ? await videoFrameFromBuffer(buffer, path.extname(entry).slice(1), size)
+                        : buffer;
                 }
             }
             else {
@@ -334,6 +340,10 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
                 }
                 else if (isImageName(target)) {
                     source = target;
+                }
+                else if (isVideoName(target)) {
+                    // 视频只截一帧当缩略图；ffmpeg 不存在或截不出帧时回退成图标
+                    source = await videoFrameFromFile(target, size);
                 }
                 else if (zipTypeList.includes(path.extname(target).slice(1).toLowerCase())) {
                     // 书架封面：压缩包（zip / cbz）取包内第一张图
@@ -351,7 +361,7 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
                 }
             }
             if (!source) {
-                warnOnce(`nosrc:${editUUID}:${rel}`, `[thumb] 取不到缩略图：${rel} 里没有可用的图片（目录为空 / 压缩包里没图片 / 不是图片文件）`);
+                warnOnce(`nosrc:${editUUID}:${rel}`, `[thumb] 取不到缩略图：${rel} 里没有可用的图片或视频帧（目录为空 / 压缩包里没图片 / 视频截帧失败）`);
                 return undefined;
             }
             ensureDir();
