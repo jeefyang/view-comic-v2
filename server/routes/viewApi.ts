@@ -8,6 +8,8 @@ import path from "path";
 import { getComicViewList, getViewFile } from '../utils/view';
 import { resolveInsideRoot } from '../utils/pathSafe';
 import { clearThumbs } from '../utils/thumb';
+import { clearPageCache } from '../utils/book/cache';
+import { isBookError } from '../utils/book/errors';
 
 export function useViewApi(router: Router) {
     const viewRouter = new TransExpressRouter(ViewApiUrl, router);
@@ -139,6 +141,14 @@ export function useViewApi(router: Router) {
             };
         }
         catch (e) {
+            // 容器书自己的失败原因（损坏 / 超限 / DRM / 阶段未上线）要原样交给前端提示，
+            // 否则只会得到一句「[object Object]」
+            if (isBookError(e)) {
+                return {
+                    code: e.status,
+                    msg: e.message
+                };
+            }
             return {
                 code: 500,
                 msg: e
@@ -154,6 +164,27 @@ export function useViewApi(router: Router) {
         }
         try {
             const count = await clearThumbs();
+            return {
+                code: 200,
+                data: { count }
+            };
+        }
+        catch (e) {
+            return {
+                code: 500,
+                msg: String(e)
+            };
+        }
+    });
+
+    // 清空页图缓存（data/pages 下的全部文件）：PDF / EPUB / MOBI 渲染出来的页图
+    viewRouter.setRouter("clearPageCache", async (from, req, res) => {
+        const check = await vertifyToken(req, res);
+        if (check) {
+            return check;
+        }
+        try {
+            const count = await clearPageCache();
             return {
                 code: 200,
                 data: { count }

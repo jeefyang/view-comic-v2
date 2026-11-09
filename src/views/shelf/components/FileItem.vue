@@ -26,7 +26,7 @@
 import { computed } from "vue";
 import { useThemeVars } from "naive-ui";
 import { FolderFilled, FileCopyRound } from "@vicons/material";
-import { FileZipFilled, FileImageFilled } from "@vicons/antd";
+import { BookFilled, FileZipFilled, FileImageFilled } from "@vicons/antd";
 import { ResizeVideo24Filled } from "@vicons/fluent";
 import ThumbImage from "@/components/ThumbImage.vue";
 import { useViewStore, type ShelfFileItem } from "@/stores/view";
@@ -64,6 +64,9 @@ const icon = computed(() => {
     if (item.extType === "zip") {
         return FileZipFilled;
     }
+    if (item.extType === "pdf" || item.extType === "epub" || item.extType === "mobi") {
+        return BookFilled;
+    }
     return FileCopyRound;
 });
 
@@ -73,8 +76,8 @@ const iconColor = computed(() => (
         : themeVars.value.infoColor
 ));
 
-/** 书架上的类型区分：文件夹 / 压缩包 / 视频 / 图片 / 其它文件 */
-type ItemKind = "folder" | "zip" | "video" | "image" | "file";
+/** 书架上的类型区分：文件夹 / 压缩包 / 电子书 / 视频 / 图片 / 其它文件 */
+type ItemKind = "folder" | "zip" | "book" | "video" | "image" | "file";
 
 const kind = computed<ItemKind>(() => {
     const item = props.item;
@@ -83,6 +86,9 @@ const kind = computed<ItemKind>(() => {
     }
     if (item.extType === "zip") {
         return "zip";
+    }
+    if (item.extType === "pdf" || item.extType === "epub" || item.extType === "mobi") {
+        return "book";
     }
     if (item.extType === "video") {
         return "video";
@@ -96,6 +102,7 @@ const kind = computed<ItemKind>(() => {
 const KIND_LABELS: Record<ItemKind, string> = {
     folder: "文件夹",
     zip: "压缩包",
+    book: "电子书",
     video: "视频",
     image: "图片",
     file: "文件"
@@ -175,6 +182,10 @@ const metaTitle = computed(() => {
 
 .thumb-kind.is-zip {
     background-color: #3f7ede;
+}
+
+.thumb-kind.is-book {
+    background-color: #c1683a;
 }
 
 .thumb-kind.is-video {

@@ -241,9 +241,9 @@ class BookError extends Error { constructor(public status: 400 | 413 | 415, mess
 
 ## 6. 依赖、构建与部署
 
-- 新增运行时依赖：`pdfjs-dist@4.10.38`（精确版本，不加 `^`）、`@napi-rs/canvas`、`fast-xml-parser`。
+- 新增运行时依赖：`pdfjs-dist@4.10.38`（精确版本，不加 `^`）、`@napi-rs/canvas@0.1.100`（精确版本，理由见 §12.1）；`fast-xml-parser` 留到阶段 2 再装。
 - 体积：`@napi-rs/canvas` 平台包约 39.8MB（win32-x64-msvc / linux-x64-gnu 各一份，pnpm 只装当前平台）；整套安装后约 77MB。
-- pnpm：`@napi-rs/canvas` 是预编译 optional 平台包；若漏装会报 `Cannot find native binding`，安装后用 `node -e "require('@napi-rs/canvas')"` 自检（ESM 项目用 `import`）。
+- pnpm：`@napi-rs/canvas` 是预编译 optional 平台包；若漏装会报 `Cannot find native binding`，安装后自检一次。**根 `package.json` 的 `optionalDependencies` 必须显式登记当前平台包且版本号与 `@napi-rs/canvas` 完全一致**（win32-x64-msvc / linux-x64-gnu）：不登记时 pnpm 不会把平台包链到根 `node_modules`，登记成别的版本则 `require` 会解析到不匹配的 native binding。
 - 构建：`vite build --ssr server/index.ts` 默认把 dependencies 外置，pdfjs/ canvas 从 `node_modules` 运行时解析，无需改 vite 配置；若被 inline，需在 `ssr.noExternal` 里显式排除 native 包。发布物仍为 `dist/server/prod.mjs`。
 - 平台：Windows 开发（win32-x64）、Linux x64 发布（glibc，非 musl）；无 Docker 场景，`pnpm install` 必须在目标平台执行。
 - PM2：`max_memory_restart: "1G"` 不变；PDF 并发被 2 槽位限制，峰值内存按 §5.3 估算；建议在 `ecosystem.config.cjs` 的 `env` 里显式写 `BOOK_PDF_MAX_MB`（默认 250）与 `BOOK_PAGE_CACHE_GB`（默认 2），便于运维调整。
@@ -329,3 +329,41 @@ class BookError extends Error { constructor(public status: 400 | 413 | 415, mess
 | §7 文案、§3.5 判定、azw3 | #8 MOBI 兜底 |
 | 加密/DRM 不考虑 | #7 范围决定 |
 | §10.1 超大 PDF 上限（本 spec 合成时定：250MiB 可配置） | #9 收口时补的默认，提交 review 可改 |
+
+## 12. 阶段 1 实现备注（PDF 落地后补记）
+
+### 12.1 @napi-rs/canvas 必须钉在 0.1.100
+
+- 1.1.0（当时最新）在 Windows x64 上渲染真实 PDF 会 native 崩溃（`0xC0000005` / `0xC0000374`，位置在 `ctx.drawImage`，与具体 PDF 内容有关；纯色 canvas 的最小复现不崩）。降到 0.1.100 后同一批文件稳定出图。
+- 因此依赖写死 `0.1.100`，平台包也写死 `0.1.100`；升级前必须用「多页真实 PDF + 并发 6 页」回归一次。
+
+### 12.2 pdfjs 资源目录
+
+- `standardFontDataUrl` 与 `cMapUrl` 都从 `require.resolve("pdfjs-dist/package.json")` 推出（`standard_fonts/`、`cmaps/`），`cMapPacked: true`。缺 `cmaps` 时 CJK CID 字体（`GBK-EUC-H` 之类）整页文字会丢。
+- `useSystemFonts: false` / 不注册系统字体：保持 pdfjs 的 exact 模式，**内嵌字体**的 PDF 文字正确。
+
+### 12.3 已知限制：非嵌入 CJK 字体
+
+- 用 WPS 等工具导出、字体不内嵌（`CIDFontType2` + `Encoding GBK-EUC-H` + 无 `FontFile`）的 PDF，Node 下 pdfjs 走字形 path 生成会失败（`getPathGenerator - ignoring character`），该页**文字为空、图片与矢量正常**。
+- 试过 `disableFontFace: false` + `GlobalFonts.registerFromPath(msyh.ttc)`：这类文件能出字，但内嵌字体的文件会整页变豆腐块（`g_d0_f1` 这类 loadedName 家族解析不到，兜底 Noto Sans 无 CJK）。取舍是保住内嵌字体（占绝大多数），放弃非嵌入 CJK；要做自动 fallback 需双渲染 + 字体探测，留待后续 effort。
+
+### 12.4 队列与嵌套槽位
+
+- `thumb.ts` 外层已占一个 `withRenderSlot`；容器书页图在缩略图链路里必须以 `slot: false` 调用，否则同一请求抢两次槽位会互等（表现是缩略图永久挂起）。
+- 页图（2000px 宽）与缩略图（`min(width*2, 2000)`）共用同一组 2 槽位、32 排队；超出回 503 + `Retry-After: 3`。
+
+### 12.5 实测数据（114 页 PDF，2000px 宽 / q80）
+
+| 指标 | 结果 |
+| --- | --- |
+| 单页渲染 | 0.38–0.55s（6 页并发总耗时 554ms） |
+| 单页体积 | 280–590KB |
+| 缓存命中 | 18ms（`data/pages`） |
+| 并发 60 页 | 34×200 + 26×503（队列满即退避，恢复后正常） |
+| 清缓存 | `POST /api/view/clearPageCache` 返回删除数，随后重新生成字节一致 |
+
+### 12.6 验收状态
+
+- 服务端六项已验：页列表（114 页 / 7 位页名 / index 0 起）、按页出图、越界 404、缩略图取第 1 页且与页图不同、缓存命中 / 清除、503 退避、`.epub` / `.mobi` / `.azw3` 的 415 文案、损坏 PDF 的 400、`cbz` 走既有 zip 链路（含封面与页缩略图）。
+- 浏览器端（瀑布流 / 单页 / 双开 / 进度 / 书签）沿用既有阅读页，未改一行前端取图逻辑，仍需人工点一遍（`pnpm dev` 后打开 PDF）。
+- `pnpm build` 通过；`pnpm type-check` 仍只有既有 7 个错误。

@@ -53,7 +53,8 @@ type ComicFileListType = {
 
 
 
-type ViewFileExtType = "zip" | "image" | "video" | "other";
+/** "pdf" | "epub" | "mobi" 是容器书：页要由服务端从文件里渲染出来 */
+type ViewFileExtType = "zip" | "image" | "video" | "other" | "pdf" | "epub" | "mobi";
 
 type viewFolderType = {
     libUUID: string;

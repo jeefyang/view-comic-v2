@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import StreamZip from "node-stream-zip";
 import { getFileExt, getSizeStr } from ".";
+import { bookKindOf, getBookViewList } from "./book";
 import { getMyStreamZip } from "./myStreamZip";
 
 export function getViewFile(p: string) {
@@ -87,6 +88,10 @@ export async function getComicViewList(baseUrl: string, url: string, f: ViewFile
             basePath: path.join(url, f.name),
             start: 0
         }, undefined];
+    }
+    // 容器书：页在文件内部，列表由 book 模块给出；形状与 zip 那条链路一致
+    if (bookKindOf(f.extType)) {
+        return [await getBookViewList(p, f, path.join(url, f.name)), undefined];
     }
     return [getComicViewListByFile([baseUrl, url, f.name])[0], undefined];
 }

@@ -34,7 +34,7 @@
 ## 目录
 
 - `common/apis/*` 前后端共享的接口契约；`common/utils/*` 共享纯函数（重点是 `nameSort.ts`）
-- `server/routes/*` 路由；`server/utils/*` 业务与缓存（`library.ts` / `view.ts` / `myStreamZip.ts` / `user.ts`）
+- `server/routes/*` 路由；`server/utils/*` 业务与缓存（`library.ts` / `view.ts` / `myStreamZip.ts` / `user.ts`）；容器书（PDF 等）在 `server/utils/book/`，渲染槽位在 `server/utils/renderQueue.ts`
 - `server/dev.mjs` 开发启动器（单端口 + 后端热重载）；`server/prod.ts` 生产启动器源码（构建成 `dist/server/prod.mjs`，PM2 指向它）
 - `src/views/{library,shelf,reader,settings}` 四个页面；`src/stores/{view,config}.ts`
 - `public/reader/tap-zones/*.json` 点击区域默认布局与预设
@@ -60,7 +60,7 @@
 `basePath` 必须经 `normalizeBasePath()`：服务端 Windows 的 `path.join` 会给反斜杠，根目录会给 `"."`。
 
 ### 图片文件服务（`/api/file`）
-- 一条路由分三种来源：`getFileExt(url)` 不是 `zip` 时按普通文件流式返回（`getContentType()` + `Accept-Ranges: bytes` + `immutable`）；是 `zip` 时走 `node-stream-zip` 取条目；路径是目录时取目录里第一张图。**别再「不是目录就当压缩包」**：曾经把根目录的单张 JPEG 喂给 `node-stream-zip`，`Bad archive` 一路崩掉整个进程。
+- 一条路由分四种来源：`getFileExt(url)` 是容器书（`pdf` / `epub` / `mobi`）时交给 `book/` 现渲染第 `num` 页（渲染结果是小 JPEG，忽略 Range 回 200 全量，越界 404）；不是 `zip` 时按普通文件流式返回（`getContentType()` + `Accept-Ranges: bytes` + `immutable`）；是 `zip` 时走 `node-stream-zip` 取条目；路径是目录时取目录里第一张图。**别再「不是目录就当压缩包」**：曾经把根目录的单张 JPEG 喂给 `node-stream-zip`，`Bad archive` 一路崩掉整个进程。
 - Range 必须是真 Range：`parseRange()` 解析（支持 `bytes=start-end`、`bytes=-N`），`sendStream()` 统一发头 —— 有 Range → **206 + `Content-Range: bytes start-end/size` + 对应 `Content-Length`**；无 Range → `200 + Content-Length: size`；越界 → **416 + `Content-Range: bytes */size`**。
 - **绝对不要「截断之后仍回 200」**：旧的 `getLimitStream` 按字节截断上游流、状态码却是 200 还带 `immutable`，浏览器会把残包当成这张图的完整内容缓存一年（详见下方陷阱）。压缩包内条目做不了切片，**忽略 Range 回 200 全量**即可（HTTP 允许，关键是不截断）。
 - 图片地址末尾带版本号：`src/utils/fileUrl.ts` 的 `FILE_URL_VERSION`（现在是 `2`），`buildFileUrl()` 输出 `...?v=2`。URL 就是缓存键，改坏过的浏览器缓存只能靠升版本号作废。
@@ -84,6 +84,15 @@
 - **缩略图路径要跟着条目走，不能实时读当前层级**：书架条目是 `ShelfFileItem = ViewFileType & { thumbPath: string }`，`sortShelfFileList()` 生成条目时就把当刻 `shelfPath` 拼进去；`FileItem.vue` 只读 `props.item.thumbPath`。阅读页文件列表同理，`FileListDrawer.vue` 在 `rows` 里连 `path` 一起算好再绑给 `<thumb-image :path>`。另外 `updateShelfFolder()` 必须在 `await` 之前先清空 `shelfFileList` / `shelfFolder` / `shelfScrollName`——否则切目录的一瞬间旧条目会带着新前缀去要 `compare/img-006.jpg` 这类不存在的路径，日志里表现为一批「路径不存在或越界」404。
 - 开关：`src/utils/appFeatures.ts` 的 `appFeatures.thumbnails`（设置 → 数据 → 缩略图）。关掉后前端一个请求都不发，书架与阅读页文件列表都退回图标。
 - 压缩包并发：`myStreamZip.ts` 必须**等 `init()` 完成再入缓存**（用 `opening` Promise 合并同路径的首次打开），否则并发首次访问会拿到空的 `fileList`；读取单个条目不要调 `zip.finishStream()`，它会关掉同包其它请求的流。
+
+### 容器书（PDF / EPUB / MOBI）页图
+- 「和 zip 一致」的全部含义：`comicViewList` 回同样的 `{ list, baseFile, basePath, start }`，页名固定 7 位 `0000001.jpg`、index 0 起，URL 仍是 `/api/file/{editUUID}/{index}/{容器相对路径}`，进度 / 书签 / 文件列表一行不改。
+- 分派在 `server/utils/view.ts` 的 `getComicViewList`：`bookKindOf(extType)` 命中就走 `server/utils/book/index.ts`；取页在 `server/routes/api.ts` 的 `/api/file` 的三分支之前（容器书绝不能把整份文件当普通文件发出去）。
+- PDF：`book/pdf.ts` 打开一次后按 mtime 做 2 本 LRU（`docCache`），页图 2000px 宽、高封顶 8000、JPEG q80；`data/pages/{sha1(lib\0relPath\0mtime\0size\0index\0width)}.jpg`，默认 2GB、超限删到 80%（`BOOK_PAGE_CACHE_GB`），单飞 + 60s 节流；`BOOK_PDF_MAX_MB`（默认 250）在打开前拦超限。同一页并发生成合并成一个 Promise。
+- 缩略图：容器书走 `thumb.ts` 的 `splitContainerEntry()`（后缀含 `.zip` / `.cbz` / `.pdf` / `.epub` / `.mobi` / `.azw3`）；给了页名出那一页，只给容器取第 1 页，按 `min(width*2, 2000)` 宽渲染再由 sharp 缩。**容器书在缩略图链路里必须 `slot: false`**（外层已占槽位，否则互等）。
+- 渲染槽位：`renderQueue.ts` 把 sharp 缩略图与容器书页图合并成同一组（运行 2 / 排队 32），满则 503 + `Retry-After: 3`。以前 thumb.ts 内的同名常量已迁走，`ThumbBusyError` 只是别名。
+- 已知限制：非嵌入 CJK 字体（WPS 导出、无 `FontFile`）的 PDF 页文字不显示（图片 / 矢量正常），原因与取舍见 `docs/specs/pdf-epub-mobi.md` §12.3；`@napi-rs/canvas` 钉 0.1.100，1.1.0 在 Windows 上 `drawImage` 会 native 崩溃。
+- 阶段 2 / 3 未接：`.epub` / `.mobi` / `.azw3` 点开回 415「还在开发中」；书架卡片与封面已有入口。
 
 ### 历史与书签
 - 数据存云端 `userConfig`（`data/userConfig.json`）：`readHistory`（最多 200 条，`openTime` 倒序）与 `bookmarks`（最多 500 条，`createTime` 倒序），读写都在 `src/views/history/historyData.ts`，页面是 `src/views/history/historyView.vue` 的两个标签页。
@@ -136,11 +145,14 @@
 - 阅读边距：设置 → 阅读 → 「阅读边距」可调上/下/左/右（0–48px，默认 8/8/8/8）与瀑布流图片间距（0–48px，默认 6），瀑布流与单页都生效，改完 500ms 防抖写云端（`paddingTop/Bottom/Left/Right`、`imageGap`，旧的 `padding` / `pageMargin` 只做一次迁移读取）
 - 书架快捷滚动：右下角悬浮两个按钮（回到顶部 / 滚到底部），`FileListItem2` 通过 `defineExpose` 暴露 `scrollToTop/scrollToBottom/snapshot`
 - 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
+- 电子书：PDF 已按「模拟 zip 页清单」接入（书架入口、页列表、按页出图、页缩略图、进度 / 书签）；EPUB / MOBI / azw3 入口在、点开回 415（阶段 2 / 3）
 - 安全：`/file`、`/view/*` 全部限制在书库根内
 
 ## 已知待办
 
 - 那 7 个历史类型错误还在，`pnpm build:check` 会因此失败（`pnpm build` 不受影响）
+- PDF 已知限制：非嵌入 CJK 字体的页文字不显示（本仓库测试的 WPS 导出 PDF 中招）；`@napi-rs/canvas` 钉 0.1.100，升级前先回归 `drawImage`
+- EPUB（阶段 2）、MOBI 固定版式（阶段 3）尚未实现，点开是 415 文案
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - `rar` 仍被当普通文件处理（书架排序 / 过滤 / 搜索词已持久化，别再当待办）
 - 视频文件只做了类型角标，未取首帧缩略图
