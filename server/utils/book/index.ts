@@ -1,6 +1,6 @@
-import fsp from "fs/promises";
 import { getFileExt } from "../index";
 import { BookError } from "./errors";
+import { getEpubPageBuffer, getEpubPageList } from "./epub";
 import { isBookExtType } from "./pages";
 import { getPdfPageBuffer, getPdfPageList } from "./pdf";
 
@@ -10,11 +10,11 @@ export function bookKindOf(extType?: ViewFileExtType): BookKind | undefined {
     return isBookExtType(extType) ? extType as BookKind : undefined;
 }
 
-/** 阶段 1 只接了 PDF；EPUB / MOBI 留到阶段 2 / 3，点开时给出明确提示而不是静默 404 */
+/** PDF / EPUB 已接；MOBI 留到阶段 3，点开时给出明确提示而不是静默 404 */
 function notYet(kind: BookKind) {
-    return new BookError(415, kind === "epub"
-        ? "EPUB 支持还在开发中（阶段 2），暂不可用；可先压成 zip 或按图片目录阅读。"
-        : "MOBI 支持还在开发中（阶段 3），暂不可用；可先压成 zip 或按图片目录阅读。");
+    return new BookError(415, kind === "mobi"
+        ? "MOBI 支持还在开发中（阶段 3），暂不可用；可先压成 zip 或按图片目录阅读。"
+        : "该格式暂不支持。");
 }
 
 /** 容器书 → 页列表，形状与 getMyStreamZip 那条链路完全一致（list + baseFile + basePath + start） */
@@ -23,10 +23,11 @@ export async function getBookViewList(p: string, f: ViewFileType, basePath: stri
     if (!kind) {
         throw new BookError(400, "不是支持的电子书格式。");
     }
-    if (kind !== "pdf") {
-        throw notYet(kind);
-    }
-    const list = await getPdfPageList(p, f);
+    const list = await (kind === "pdf"
+        ? getPdfPageList(p, f)
+        : kind === "epub"
+            ? getEpubPageList(p, f)
+            : Promise.reject(notYet(kind)));
     return {
         list,
         baseFile: f,
@@ -45,10 +46,18 @@ export async function getBookPageBuffer(opts: {
     width?: number;
     slot?: boolean;
 }): Promise<{ buffer: Buffer; ext: string } | undefined> {
-    if (opts.kind !== "pdf") {
-        throw notYet(opts.kind);
+    if (opts.kind === "pdf") {
+        return await getPdfPageBuffer(opts);
     }
-    return await getPdfPageBuffer(opts);
+    if (opts.kind === "epub") {
+        // EPUB 页图是包内原图，不渲染、不缩放，width / slot 都用不上
+        return await getEpubPageBuffer({
+            absPath: opts.absPath,
+            relPath: opts.relPath,
+            index: opts.index
+        });
+    }
+    throw notYet(opts.kind);
 }
 
 /**
@@ -68,8 +77,17 @@ export async function getBookThumbBuffer(opts: {
     if (!kind) {
         return undefined;
     }
+    if (kind === "epub") {
+        // 直接拿第 1 页原图交给 sharp 缩，省掉一次渲染
+        const page = await getEpubPageBuffer({
+            absPath: opts.absPath,
+            relPath: opts.relPath,
+            index: opts.pageIndex
+        });
+        return page?.buffer;
+    }
     if (kind !== "pdf") {
-        // 阶段 2 / 3 之前，EPUB / MOBI 就是「暂时没有缩略图」，不要让它变成整屏报错
+        // MOBI 阶段 3 之前就是「暂时没有缩略图」，不要让它变成整屏报错
         return undefined;
     }
     // 缩略图要小，但 pdfjs 的渲染质量随尺寸下降；按 2 倍宽渲染再由 sharp 缩，字才不糊

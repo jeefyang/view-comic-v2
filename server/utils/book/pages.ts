@@ -8,7 +8,7 @@ export const BOOK_PAGE_DIGITS = 7;
 export const BOOK_PAGE_LIMIT = 10 ** BOOK_PAGE_DIGITS - 1;
 
 /** 目前允许当页图的扩展名：都能在 contentTypeList 里查到 image/* */
-const PAGE_EXT_LIST = ["jpg", "png", "gif", "webp"];
+export const PAGE_EXT_LIST = ["jpg", "jpeg", "png", "gif", "webp"];
 
 const BOOK_EXT_TYPES: ViewFileExtType[] = ["pdf", "epub", "mobi"];
 
