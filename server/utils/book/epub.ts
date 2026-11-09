@@ -366,8 +366,8 @@ async function readSpine(handle: EpubHandle): Promise<EpubPage[]> {
         throw new BookError(400, BROKEN_MESSAGE);
     }
     const pages: EpubPage[] = [];
-    for (const ref of refs) {
-        const idref = attr(ref, "idref");
+    for (const itemref of refs) {
+        const idref = attr(itemref, "idref");
         const item = idref ? manifest.get(idref) : undefined;
         if (!item) {
             throw new BookError(400, BROKEN_MESSAGE);

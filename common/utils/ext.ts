@@ -14,6 +14,7 @@ export const contentTypeList = {
     gif: 'image/gif',
     webp: 'image/webp',
     apng: 'image/apng',
+    bmp: 'image/bmp',
     pdf: 'application/pdf',
     epub: 'application/epub+zip',
     mobi: 'application/x-mobipocket-ebook',
