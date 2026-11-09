@@ -3,12 +3,15 @@ import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
 import sharp from "sharp";
-import { imageTypeList } from "@common/utils/ext.js";
+import { imageTypeList, zipTypeList } from "@common/utils/ext.js";
 import { sortFileList } from "@common/utils/nameSort.js";
+import { getBookThumbBuffer } from "./book/index.js";
+import { parsePageName } from "./book/pages.js";
 import { DATA_DIR } from "./cache.js";
 import { getLibCache, resolveLibRoot } from "./library.js";
 import { getMyStreamZip } from "./myStreamZip.js";
 import { resolveInsideRoot } from "./pathSafe.js";
+import { RenderBusyError, withRenderSlot } from "./renderQueue.js";
 
 /** 缩略图都放这里，跟其他 json 数据同级 */
 export const THUMB_DIR = path.join(DATA_DIR, "thumbs");
@@ -135,23 +138,36 @@ async function firstImageInZip(file: string): Promise<Buffer | undefined> {
     return await readAll(stream);
 }
 
+/** 能当「伪目录」的容器后缀：压缩包（含 cbz）与三种电子书 */
+const CONTAINER_SUFFIXES = [".zip", ".cbz", ".pdf", ".epub", ".mobi", ".azw3"];
+
+/** 容器书（页要现渲染）；zip / cbz 仍走 node-stream-zip */
+function isBookContainer(file: string) {
+    const ext = path.extname(file).slice(1).toLowerCase();
+    return ext === "pdf" || ext === "epub" || ext === "mobi" || ext === "azw3";
+}
+
 /**
- * `img.zip/0001.jpg` 这种「压缩包 + 包内条目」的写法，拆成两段。
- * 阅读页的文件列表要按页出缩略图，而页在包内没有独立磁盘路径，只能这么表达。
+ * `img.zip/0001.jpg`、`book.pdf/0000001.jpg` 这种「容器 + 内部条目」的写法，拆成两段。
+ * 阅读页的文件列表要按页出缩略图，而页在容器内没有独立磁盘路径，只能这么表达。
  *
- * 从右往左找，并且要求切出来的那一段在磁盘上真的是个 zip 文件：
+ * 从右往左找 `/`，要求切出来的那一段以容器后缀结尾、并且在磁盘上真实存在：
  * 书库路径里完全可能出现 `旧包.zip/...` 这样的目录名，从左往右切会张冠李戴。
+ * 只认单段条目名（页名是平的），所以按最后一个 `/` 切就够。
  */
-function splitZipEntry(relPath: string, root: string): { zipPath: string; entry: string } | undefined {
+function splitContainerEntry(relPath: string, root: string): { containerPath: string; entry: string } | undefined {
     const lower = relPath.toLowerCase();
-    let at = lower.lastIndexOf(".zip/");
+    let at = lower.lastIndexOf("/");
     while (at > 0) {
-        const zipPath = relPath.slice(0, at + 4);
-        const abs = path.isAbsolute(zipPath) ? zipPath : path.join(root, zipPath);
-        if (fs.existsSync(abs)) {
-            return { zipPath, entry: relPath.slice(at + 5) };
+        const containerPath = relPath.slice(0, at);
+        const lowerPath = lower.slice(0, at);
+        if (CONTAINER_SUFFIXES.some((suffix) => lowerPath.endsWith(suffix))) {
+            const abs = path.isAbsolute(containerPath) ? containerPath : path.join(root, containerPath);
+            if (fs.existsSync(abs)) {
+                return { containerPath, entry: relPath.slice(at + 1) };
+            }
         }
-        at = lower.lastIndexOf(".zip/", at - 1);
+        at = lower.lastIndexOf("/", at - 1);
     }
     return undefined;
 }
@@ -239,60 +255,15 @@ async function render(source: string | Buffer, out: string, width: number): Prom
 /** 同一张缩略图的并发生成合并成一个 Promise，避免重复解码 */
 const generating = new Map<string, Promise<Buffer | undefined>>();
 
-/** 排队太满时抛这个，路由层翻译成 503 + Retry-After，让前端稍后再来 */
-export class ThumbBusyError extends Error {
-    constructor() {
-        super("缩略图生成队列已满");
-        this.name = "ThumbBusyError";
-    }
-}
-
 /**
- * 同时解码的缩略图数量。sharp 是 CPU 密集的，解大图的上限压到 2，
- * 手机端快速滑文件列表时不至于把内存顶穿。
+ * 排队太满时抛这个，路由层翻译成 503 + Retry-After，让前端稍后再来。
+ * 队列本身已抽到 renderQueue.ts（与容器书页图共用同一组槽位），
+ * 这里保留原来的导出名，路由层与前端已有引用不用改。
  */
-const MAX_GENERATE = 2;
-/** 排队上限：超过就不再收，直接让前端退避重试 */
-const MAX_WAITING = 32;
-
-let running = 0;
-const waiting: (() => void)[] = [];
+export { RenderBusyError as ThumbBusyError };
 
 /** 简单的命中/未命中计数，方便排查「怎么老是重新生成」 */
 export const thumbStats = { hit: 0, miss: 0, busy: 0, failed: 0 };
-
-async function acquireSlot() {
-    if (running < MAX_GENERATE) {
-        running++;
-        return;
-    }
-    if (waiting.length >= MAX_WAITING) {
-        thumbStats.busy++;
-        throw new ThumbBusyError();
-    }
-    await new Promise<void>((resolve) => {
-        waiting.push(resolve);
-    });
-    running++;
-}
-
-function releaseSlot() {
-    running = Math.max(0, running - 1);
-    const next = waiting.shift();
-    if (next) {
-        next();
-    }
-}
-
-async function withSlot<T>(task: () => Promise<T>): Promise<T> {
-    await acquireSlot();
-    try {
-        return await task();
-    }
-    finally {
-        releaseSlot();
-    }
-}
 
 /** 取缩略图：命中磁盘直接返回，没有就按需生成；生成不了（视频/空包/无图目录）返回 undefined */
 export async function getThumbBuffer(editUUID: string, relPath: string, width: number): Promise<Buffer | undefined> {
@@ -304,8 +275,8 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
         return undefined;
     }
     const rel = normalizeRelPath(relPath);
-    const zipSplit = splitZipEntry(rel, root);
-    const target = resolveInsideRoot(root, zipSplit ? zipSplit.zipPath : rel);
+    const containerSplit = splitContainerEntry(rel, root);
+    const target = resolveInsideRoot(root, containerSplit ? containerSplit.containerPath : rel);
     if (!target || !fs.existsSync(target)) {
         warnOnce(`nofile:${editUUID}:${rel}`, `[thumb] 取不到缩略图：路径不存在或越界 ${rel}（书库根 ${root}）`);
         return undefined;
@@ -329,11 +300,24 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
         return await pending;
     }
     thumbStats.miss++;
-    const task = withSlot(async () => {
+    const run = withRenderSlot(async () => {
         try {
             let source: string | Buffer | undefined;
-            if (zipSplit) {
-                source = await zipEntryBuffer(target, zipSplit.entry);
+            if (containerSplit) {
+                if (isBookContainer(containerSplit.containerPath)) {
+                    // 页名里带了页码就渲染那一页；书架封面路径只有容器，取第 1 页
+                    const pageIndex = parsePageName(path.basename(containerSplit.entry)) ?? 0;
+                    source = await getBookThumbBuffer({
+                        libName: lib?.name || root,
+                        absPath: target,
+                        relPath: containerSplit.containerPath,
+                        pageIndex,
+                        width: size
+                    });
+                }
+                else {
+                    source = await zipEntryBuffer(target, containerSplit.entry);
+                }
             }
             else {
                 const stat = await fsp.stat(target);
@@ -346,8 +330,19 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
                 else if (isImageName(target)) {
                     source = target;
                 }
-                else if (path.extname(target).slice(1).toLowerCase() === "zip") {
+                else if (zipTypeList.includes(path.extname(target).slice(1).toLowerCase())) {
+                    // 书架封面：压缩包（zip / cbz）取包内第一张图
                     source = await firstImageInZip(target);
+                }
+                else if (isBookContainer(target)) {
+                    // 书架封面：只给容器文件，取第 1 页
+                    source = await getBookThumbBuffer({
+                        libName: lib?.name || root,
+                        absPath: target,
+                        relPath: rel,
+                        pageIndex: 0,
+                        width: size
+                    });
                 }
             }
             if (!source) {
@@ -358,16 +353,22 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
             return await render(source, out, size);
         }
         catch (e) {
-            if (e instanceof ThumbBusyError) {
-                throw e;
-            }
             thumbStats.failed++;
             console.error("生成缩略图失败:", rel, e);
             return undefined;
         }
-    }).finally(() => {
-        generating.delete(pendingKey);
     });
+    // 队列满是在进入任务之前抛的，得在这里记一笔，不然 busy 计数永远是 0
+    const task = run
+        .catch((e: unknown) => {
+            if (e instanceof RenderBusyError) {
+                thumbStats.busy++;
+            }
+            throw e;
+        })
+        .finally(() => {
+            generating.delete(pendingKey);
+        });
     generating.set(pendingKey, task);
     return await task;
 }

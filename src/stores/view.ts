@@ -122,8 +122,8 @@ export const useViewStore = defineStore('view', () => {
         const prefix = shelfPath.value.join("/");
         const toShelfItem = (item: ViewFileType): ShelfFileItem => ({
             ...item,
-            // 文件夹 / 图片 / 压缩包要缩略图；视频暂不取帧
-            thumbPath: item.isDir || item.extType === "image" || item.extType === "zip"
+            // 文件夹 / 图片 / 压缩包 / 电子书要缩略图；视频暂不取帧，其它类型也不试
+            thumbPath: item.isDir || item.extType === "image" || item.extType === "zip" || item.extType === "pdf" || item.extType === "epub" || item.extType === "mobi"
                 ? [prefix, item.name].filter(Boolean).join("/")
                 : ""
         });

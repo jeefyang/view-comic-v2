@@ -113,7 +113,8 @@ const toClick = async (item: ViewFileType) => {
         viewStore.updateShelfFolder();
         return;
     }
-    const list: ViewFileExtType[] = ["image", "zip"];
+    // 电子书与 zip 走同一套「取页列表 → 进阅读页」的流程
+    const list: ViewFileExtType[] = ["image", "zip", "pdf", "epub", "mobi"];
     if (list.includes(item.extType)) {
         const res = await viewStore.updateComicViewList(item);
         if (res.code != 200) {

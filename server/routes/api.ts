@@ -3,7 +3,7 @@ import { useConfigApi } from './configApi.js';
 import { useUserApi } from './userApi.js';
 import { useLibraryApi } from "./libraryApi.js";
 import { useViewApi } from './viewApi.js';
-import { getLibPathByUUID } from '../utils/library.js';
+import { getLibCache, getLibPathByUUID } from '../utils/library.js';
 import fs from 'fs';
 import path from "path";
 import { getComicViewList, getComicViewListByFile } from '../utils/view.js';
@@ -12,6 +12,9 @@ import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
 import { resolveInsideRoot } from '../utils/pathSafe.js';
 import { getThumbBuffer, ThumbBusyError } from '../utils/thumb.js';
+import { bookKindOf, getBookPageBuffer } from '../utils/book/index.js';
+import { isBookError } from '../utils/book/errors.js';
+import { RenderBusyError } from '../utils/renderQueue.js';
 
 const router: Router = Router();
 
@@ -123,9 +126,12 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     if (data[1]) {
         return res.sendStatus(404);
     }
+    // 下面压缩包分支会用 `data` 接 getMyStreamZip，这里先把书库根留住，
+    // 否则同一个块里再写 `data[0]` 会撞上 TDZ（块级变量未初始化）
+    const libRoot = data[0]!;
     // 把片段拼成相对路径后整体解析，确认最终路径仍在书库根目录内。
     // 否则 `../` 这类片段可以顺着书库根一路读到磁盘上的任意文件。
-    const url = resolveInsideRoot(data[0]!, path.join(...fromPathList));
+    const url = resolveInsideRoot(libRoot, path.join(...fromPathList));
     if (!url) {
         return res.sendStatus(404);
     }
@@ -160,6 +166,45 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
         }
         else {
             const extData = getFileExt(url);
+            // 容器书（PDF / EPUB / MOBI）：页要现渲染，绝不能当普通文件把整份字节发出去。
+            // 序号越界回 404，与目录 / 压缩包两条链路一致。
+            const bookKind = bookKindOf(extData.extType);
+            if (bookKind) {
+                const lib = getLibCache().find((item) => item.editUUID === editUUID);
+                if (!lib) {
+                    return res.sendStatus(404);
+                }
+                try {
+                    const page = await getBookPageBuffer({
+                        kind: bookKind,
+                        libName: lib.name,
+                        absPath: url,
+                        relPath: path.relative(libRoot, url),
+                        index: num
+                    });
+                    if (!page) {
+                        return res.sendStatus(404);
+                    }
+                    // 渲染结果是一张独立 JPEG，和 zip 条目一样忽略 Range 回 200 全量：
+                    // 截断后还回 200 会被浏览器当成完整内容长期缓存
+                    res.setHeader("Content-Type", getContentType(`page.${page.ext}`));
+                    res.setHeader("Accept-Ranges", 'bytes');
+                    res.setHeader("Content-Length", String(page.buffer.length));
+                    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                    return res.status(200).end(page.buffer);
+                }
+                catch (e) {
+                    if (isBookError(e)) {
+                        return res.status(e.status).send(e.message);
+                    }
+                    if (e instanceof RenderBusyError) {
+                        res.setHeader("Retry-After", "3");
+                        return res.sendStatus(503);
+                    }
+                    console.error("读取电子书页失败:", url, e);
+                    return res.status(500).send("页面渲染失败");
+                }
+            }
             // 普通文件（单张图片 / 视频）：直接按文件流返回。
             // 以前这里不看类型，一律当压缩包打开 —— 在书架根目录点开一张图片时，
             // node-stream-zip 会拿 JPEG 当 zip 解析并抛 `Bad archive`，
