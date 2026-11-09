@@ -50,8 +50,8 @@ function openDb(): Promise<IDBDatabase | null> {
     return dbPromise;
 }
 
-export function thumbCacheKey(editUUID: string, width: number, path: string) {
-    return `${editUUID}|${width}|${path}`;
+export function thumbCacheKey(editUUID: string, width: number, path: string, version?: number) {
+    return `${editUUID}|${width}|${path}${version ? `|v${version}` : ""}`;
 }
 
 export async function getThumbBlob(key: string): Promise<Blob | undefined> {

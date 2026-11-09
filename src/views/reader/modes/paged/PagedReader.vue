@@ -100,7 +100,7 @@ import { useConfigStore } from "@/stores/config";
 import { readerPages } from "@/views/reader/readerPages";
 import { readerSettings } from "@/views/reader/readerSettings";
 import type { ReaderModeHandle } from "@/views/reader/modes/types";
-import { computeFit } from "@/views/reader/modes/fitStrategies";
+import { computeFit, computeVideoFit } from "@/views/reader/modes/fitStrategies";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
 import { slowNetwork } from "@/utils/network";
@@ -273,7 +273,8 @@ const isLandscape = computed(() => {
     return width > 0 && height > 0 && width > height;
 });
 
-const isSpread = computed(() => readerSettings.splitSpread && isLandscape.value);
+// 视频是单独一页，不参与双开页拆分；否则横屏视频会被拆成两半，rotate 还会被迫退化成 fit
+const isSpread = computed(() => !isVideo.value && readerSettings.splitSpread && isLandscape.value);
 
 /** 双开页要按「半页」的尺寸算 */
 const fitSize = computed(() => {
@@ -285,9 +286,14 @@ const fitSize = computed(() => {
 });
 
 const fit = computed(() => {
+    const { width, height } = fitSize.value;
+    // 视频旋转时用 cover 铺满，避免宽高比不合造成的黑边；图片仍走 contain
+    if (isVideo.value && readerSettings.fitMode === "rotate") {
+        return computeVideoFit(width, height, viewSize.width, viewSize.height);
+    }
     // rotate 与裁切互相打架，双开页时退化回 contain
     const mode = isSpread.value && readerSettings.fitMode === "rotate" ? "fit" : readerSettings.fitMode;
-    return computeFit(fitSize.value.width, fitSize.value.height, viewSize.width, viewSize.height, mode);
+    return computeFit(width, height, viewSize.width, viewSize.height, mode);
 });
 
 /** 双开页当前显示的是第几半：0 = 左半，1 = 右半 */

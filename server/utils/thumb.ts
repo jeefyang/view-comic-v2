@@ -289,7 +289,11 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
     }
 
     const id = thumbId(lib?.name || root, rel);
-    const out = thumbFile(id, size);
+    // 视频缩略图的取帧策略改过（中间帧），用新的缓存 id 隔离旧的「黑帧」缓存；
+    // 图片缩略图不受影响，不会因为这次改动全部重新生成。
+    const isVideoTarget = isVideoName(containerSplit ? containerSplit.entry : rel);
+    const cacheId = isVideoTarget ? `${id}_v2` : id;
+    const out = thumbFile(cacheId, size);
     try {
         if (fs.existsSync(out)) {
             thumbStats.hit++;
@@ -300,7 +304,7 @@ export async function getThumbBuffer(editUUID: string, relPath: string, width: n
         // 读失败就当没缓存，走下面的重新生成
     }
 
-    const pendingKey = `${id}_${size}`;
+    const pendingKey = `${cacheId}_${size}`;
     const pending = generating.get(pendingKey);
     if (pending) {
         return await pending;

@@ -7,11 +7,14 @@ import { videoTypeList } from "@common/utils/ext.js";
 
 /** 单次截图最多等这么久；超时就杀掉，不能让 ffmpeg 卡住整个渲染队列 */
 const FRAME_TIMEOUT_MS = 15_000;
+const PROBE_TIMEOUT_MS = 5_000;
 const MAX_STDERR = 8 * 1024;
 
 /** 本进程内已经确认过「找不到 ffmpeg」，后续不再反复 spawn */
 let ffmpegUnavailable = false;
 let warnedMissing = false;
+/** ffprobe 只用来读时长；找不到时静默回退到固定时间点，不影响截图 */
+let ffprobeUnavailable = false;
 
 export function isVideoName(name: string) {
     return videoTypeList.includes(path.extname(name).slice(1).toLowerCase());
@@ -34,6 +37,29 @@ function ffmpegCandidates() {
     if (process.platform === "win32") {
         candidates.push("C:/ProgramData/chocolatey/lib/ffmpeg-full/tools/ffmpeg/bin/ffmpeg.exe");
         candidates.push("C:/ProgramData/chocolatey/bin/ffmpeg.exe");
+    }
+    return [...new Set(candidates)];
+}
+
+/**
+ * ffprobe 的查找顺序与 ffmpeg 一致。显式配置 FFMPEG_PATH 时优先找同目录的 ffprobe，
+ * 因为用户自建 ffmpeg 目录通常也带 ffprobe；找不到就回退到 PATH。
+ */
+function ffprobeCandidates() {
+    const explicit = process.env.FFPROBE_PATH?.trim();
+    if (explicit) {
+        return [explicit];
+    }
+    const candidates: string[] = [];
+    const ffmpegExplicit = process.env.FFMPEG_PATH?.trim();
+    if (ffmpegExplicit) {
+        const dir = path.dirname(ffmpegExplicit);
+        candidates.push(path.join(dir, process.platform === "win32" ? "ffprobe.exe" : "ffprobe"));
+    }
+    candidates.push("ffprobe");
+    if (process.platform === "win32") {
+        candidates.push("C:/ProgramData/chocolatey/lib/ffmpeg-full/tools/ffmpeg/bin/ffprobe.exe");
+        candidates.push("C:/ProgramData/chocolatey/bin/ffprobe.exe");
     }
     return [...new Set(candidates)];
 }
@@ -146,6 +172,93 @@ function runFfmpeg(bin: string, input: string, width: number, seekSeconds: numbe
     });
 }
 
+type ProbeResult = {
+    duration?: number;
+    /** 这个候选路径根本不存在，可以继续试下一个 */
+    missing: boolean;
+};
+
+/** 读容器时长（秒）。ffprobe 不可用时返回 undefined，由调用方回退到固定时间点。 */
+function runFfprobe(bin: string, input: string): Promise<ProbeResult> {
+    return new Promise((resolve) => {
+        let child;
+        try {
+            child = spawn(bin, [
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                input
+            ], {
+                windowsHide: true,
+                stdio: ["ignore", "pipe", "ignore"]
+            });
+        }
+        catch (e) {
+            const code = (e as NodeJS.ErrnoException).code;
+            resolve({ missing: code === "ENOENT" });
+            return;
+        }
+
+        const chunks: Buffer[] = [];
+        let settled = false;
+        let timedOut = false;
+
+        const finish = (result: ProbeResult) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            resolve(result);
+        };
+
+        const timer = setTimeout(() => {
+            timedOut = true;
+            child.kill();
+        }, PROBE_TIMEOUT_MS);
+
+        child.stdout?.on("data", (chunk: Buffer) => {
+            chunks.push(chunk);
+        });
+        child.on("error", (e: NodeJS.ErrnoException) => {
+            finish({ missing: e.code === "ENOENT" });
+        });
+        child.on("close", (code) => {
+            if (timedOut || code !== 0) {
+                finish({ missing: false });
+                return;
+            }
+            const value = Number(Buffer.concat(chunks).toString().trim());
+            finish({
+                duration: Number.isFinite(value) && value > 0 ? value : undefined,
+                missing: false
+            });
+        });
+    });
+}
+
+async function probeDuration(input: string): Promise<number | undefined> {
+    if (ffprobeUnavailable) {
+        return undefined;
+    }
+    let missing = false;
+    for (const bin of ffprobeCandidates()) {
+        const result = await runFfprobe(bin, input);
+        if (result.duration) {
+            return result.duration;
+        }
+        if (!result.missing) {
+            // ffprobe 跑起来了但读不到时长；不再试别的路径
+            return undefined;
+        }
+        missing = true;
+    }
+    if (missing) {
+        ffprobeUnavailable = true;
+    }
+    return undefined;
+}
+
 async function runWithCandidates(input: string, width: number, seekSeconds: number): Promise<Buffer | undefined> {
     if (ffmpegUnavailable) {
         return undefined;
@@ -170,7 +283,16 @@ async function runWithCandidates(input: string, width: number, seekSeconds: numb
 }
 
 async function extractFrame(input: string, width: number): Promise<Buffer | undefined> {
-    // 1 秒处通常已经过了黑场/台标；短视频截不到时再回退到第 0 帧
+    // 先取中间帧：很多视频开头是黑场/台标，固定截第 1 秒经常还是一整片黑。
+    // 读不到时长（ffprobe 缺失、流没有 duration）时，再回退到原来的 1 秒 / 第 0 帧。
+    const duration = await probeDuration(input);
+    if (duration) {
+        const midpoint = Math.max(0, duration / 2);
+        const frame = await runWithCandidates(input, width, midpoint);
+        if (frame) {
+            return frame;
+        }
+    }
     return (await runWithCandidates(input, width, 1)) ?? (await runWithCandidates(input, width, 0));
 }
 
