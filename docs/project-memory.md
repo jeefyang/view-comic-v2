@@ -58,6 +58,7 @@
 ### 图片地址
 统一走 `src/utils/fileUrl.ts` 的 `buildFileUrl(editUUID, index, basePath)`，不要手拼 `api/file/...`。
 `basePath` 必须经 `normalizeBasePath()`：服务端 Windows 的 `path.join` 会给反斜杠，根目录会给 `"."`。
+`basePath` 还要按段 URL 编码（`buildFileUrl` 里的 `encodePathSegments`）：目录名带 `#`（例如 `test/#诛仙`）时，不编码的 `#` 会被浏览器当成 fragment 起点，实际请求打到父目录 —— 阅读页第 0 页显示成父目录的首图、其余页 500 报「加载失败」，而缩略图正常（`ThumbImage.vue` 一直按段编码）。`?` 会被当成 query、`%` 会被当成转义，同样要防。
 
 ### 图片文件服务（`/api/file`）
 - 一条路由分四种来源：`getFileExt(url)` 是容器书（`pdf` / `epub` / `mobi`）时交给 `book/` 现渲染第 `num` 页（渲染结果是小 JPEG，忽略 Range 回 200 全量，越界 404）；不是 `zip` 时按普通文件流式返回（`getContentType()` + `Accept-Ranges: bytes` + `immutable`）；是 `zip` 时走 `node-stream-zip` 取条目；路径是目录时取目录里第一张图。**别再「不是目录就当压缩包」**：曾经把根目录的单张 JPEG 喂给 `node-stream-zip`，`Bad archive` 一路崩掉整个进程。
