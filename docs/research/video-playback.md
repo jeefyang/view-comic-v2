@@ -3,6 +3,7 @@
 - 研究日期：2026-11-09（规范、MDN、WebKit/Chromium 博客均为当日快照）
 - 目标仓库：`jeefyang/view-comic-v2`（Vue 3 + TS 前端，Express 5 后端，Node `^20.19.0 || >=22.12.0`，PM2 fork 单实例、`max_memory_restart "1G"`）
 - 约束：**服务端没有 ffmpeg，sharp 不支持视频**；本次只做技术调研，不改业务代码、不加依赖。
+- 追加研究（同日）：AVI/MKV 与老编码、zip 条目无 Range 的播放/seek、animated WebP/APNG 缩略图（§2.5、§3.4、§4.4）。
 - 读法：每节先写「事实」（附一手来源 URL），再写「建议」（本仓库上下文下的取舍）；两者不混写。
 
 ## 1. 结论摘要
@@ -15,6 +16,9 @@
 4. **首帧缩略图与时长探测都不要在服务端做**：没有 ffmpeg 就没有 H.264/HEVC 解码器，sharp 也不解视频。可用方案是浏览器侧 `preload="metadata"` + `loadedmetadata` 拿时长/尺寸，需要首帧图时再 `<video>` seek 到 0 并 `canvas.drawImage(video)`（同源 `/file` 不污染 canvas）；代价是必须真的加载一段视频。
 5. **iOS 的三条硬限制**：无声/静音才允许自动播放；`<video playsinline>` 才内联播放，否则强制全屏；任意元素的 Fullscreen API 官方只宣布了 macOS/iPadOS（Safari 16.4），iPhone 上视频全屏只能靠原生控件/`webkitEnterFullscreen()`。
 6. **多音轨不要做**：`HTMLMediaElement.audioTracks` 在 Chrome 需要开实验 flag、Firefox 需要改 pref，只有 Safari 原生可用——跨浏览器切音轨在 2026 年仍不可行。
+7. **AVI 不能原样播，MKV 只能算桌面增强**：三家浏览器的源码里都没有 AVI 容器入口；MKV 只有 Chrome/Firefox 登记了 `video/x-matroska`，Safari/iOS 的 AVFoundation 不认。AVI 里最常见的 MPEG-4 Part 2 在 Chrome/Safari 也不被支持，换容器/后缀救不了（§2.5）。
+8. **zip 里的视频只能 200 全量**：`server/routes/api.ts:245-250` 忽略 Range 却仍宣告 `Accept-Ranges: bytes`；没有 byte-range 时 `seekable == buffered`，大文件拖动基本不可用。视频应放普通目录走 `sendStream` 的真 206（§3.4）。
+9. **动图缩略图一定是静帧**：animated WebP / APNG 浏览器能放，但 sharp 的 `animated` 默认 false（只读第一帧），JPEG 本身也没有动画。要动图预览只能 `<img>` 直接指向 `/file` 原图（§4.4）。
 
 ### 1.2 首版支持矩阵（事实）
 
@@ -64,6 +68,38 @@
 
 **建议**：首版把「选哪条音轨」放在转码/打包阶段解决，前端只播一条默认音轨；不要做音轨切换 UI。
 
+### 2.5 AVI / MKV / 老编码（追加研究）
+
+**事实：容器层面**
+
+| 容器 | Chrome 桌面 | Firefox 桌面 | Safari 桌面 | iOS Safari |
+| --- | --- | --- | --- | --- |
+| MP4（H.264/AAC） | ✅ | ✅ | ✅ | ✅ |
+| MKV（H.264/AAC） | ✅ 源码登记 `video/x-matroska`[来源 25] | ✅ 源码登记 `video/x-matroska`[来源 26] | ❌ 无 Matroska MIME，AVFileType 无 MKV[来源 28][来源 29] | ❌ |
+| AVI（任意编码） | ❌ 无 `video/avi` 登记[来源 25] | ❌ 无 AVI 入口[来源 27] | ❌[来源 28][来源 29] | ❌ |
+
+- Chromium 的 `media/base/mime_util_internal.cc` 里 `AddSupportedMediaFormats()` 明确注册了 `audio/matroska`、`video/matroska`、`audio/x-matroska`、`video/x-matroska`；MKV 的视频集合是 VP8/VP9，开启 `USE_PROPRIETARY_CODECS` 后含 H.264/AAC，再按编译开关含 HEVC/AV1，**但没有任何 `video/avi` / `video/x-msvideo` 登记**[来源 25]。
+- Firefox 的 `MatroskaDecoder::IsMatroskaType()` 接受 `video/matroska`、`video/x-matroska`（及对应 audio 类型）[来源 26]；`DecoderTraits.cpp` 的容器入口只有 Ogg / WebM / MP4 / MP3 / ADTS / FLAC / Matroska，**没有 AVI**[来源 27]。
+- WebKit 的 `MIMETypeRegistry.cpp` 里没有 Matroska 的 MIME 映射；`video/avi` 只做了 `video/avi → video/x-msvideo` 的**类型名规范化**，不代表能解码[来源 28]。Apple 的 `AVFileType` 只有 `mov` / `mp4` / `m4v` / `mobile3GPP` / `mobile3GPP2` 等，没有 AVI/MKV[来源 29]。
+
+**事实：AVI 里的常见编码**
+
+- **MPEG-4 Part 2（DivX/Xvid 同族）**：MDN 的 MP4V-ES 浏览器表是 Chrome No / Edge No / Firefox Yes（仅 3GP 容器）/ Opera No / Safari No；同页还有 "Chrome does not support MP4V-ES; however, ChromeOS does."[来源 3]。**即使把 AVI 换成 MP4 容器，Chrome/Safari 也不解这个编码**。
+- **MJPEG**：MDN 的视频编码清单（AV1 / AVC / H.263 / HEVC / MP4V-ES / MPEG-1 / MPEG-2 / Theora / VP8 / VP9）里**没有 MJPEG 词条**[来源 3]；没有任何一手文档声明主流浏览器的 `<video>` 支持 MJPEG。准确说法是「无支持声明」，不是「已证明不支持」——后者需要实测。
+
+**事实：服务端 ffmpeg 转码的许可与实现前提**
+
+- FFmpeg 默认 LGPL 2.1+，但启用 GPL 部分后整体适用 GPL，官方原文："If those parts get used the GPL applies to all of FFmpeg."[来源 30]
+- x264 是 GPL 软件[来源 31]；FFmpeg 的 libx264 wrapper 需要编译时 `--enable-libx264`[来源 32]。把带 x264 的 ffmpeg 二进制随产品分发，会把 GPL 义务带进分发物（这是建议，不是法律意见）。
+- 转码输出 MP4 时要 `-movflags +faststart` 才能把 moov 提前；FFmpeg wiki 原文："This will move some information to the beginning of your file and allow the video to begin playing before it is completely downloaded"[来源 33]。
+- 质量/成本旋钮：x264 的 preset 是「编码速度 ↔ 压缩率」的集合，越慢压缩越好；CRF 是常用的恒定质量模式，官方建议 "Use the slowest preset that you have patience for."[来源 33]。FFmpeg 原生 AAC 编码器就是默认 AAC 编码器，未指定码率时默认 128 kbps[来源 34]。
+
+**建议（本仓库上下文）**
+
+- AVI/MKV 不做「原样播」：要么离线转成 MP4/H.264/AAC + faststart，要么在 UI 上明确标记「不支持/需转码」。
+- 若真要做按需转码：后台队列 + 产物缓存（按 `editUUID` + 文件指纹），**不要在 Express 请求里同步跑**；单实例 + `max_memory_restart "1G"` 扛不住并发转码。
+- 成本三维：CPU（preset 越慢越贵）、磁盘（产物是第二份完整文件）、许可（x264/GPL 与 ffmpeg 二进制分发）。ffmpeg.wasm 这类纯 JS 路线本次未评估，不列为可行方案。
+
 ## 3. Range 与 MIME
 
 ### 3.1 规范要求（事实）
@@ -89,6 +125,22 @@
 - **建议 3**：zip/容器书分支既然不支持切片，就**不要**回 `Accept-Ranges: bytes`（或在没有 Range 支持的分支上显式 `Accept-Ranges: none`）。现在等于向播放器宣告了一个做不到的能力。
 - **建议 4**：`immutable` + 一年缓存对 `/file/:editUUID/...` 这种路径是合理的（路径里已含不可变 id）；但前提是**任何情况下都不能把 206 的语义降级成 200 全量**——项目记忆里已经记过一次同类事故（`decodeSize` 的 64KB Range 拿到 200 全量、被缓存一年、渐进式 JPEG 糊图）。视频文件更大，代价更高。
 
+### 3.4 zip 条目无 Range 时的播放与 seek（追加研究）
+
+**事实（代码）**
+
+- zip 条目分支（`server/routes/api.ts:245-250`）设 `Content-Type`（按条目名）、`Accept-Ranges: bytes`、`Content-Length: entry.size`，然后 `status(200)` + `stream.pipe(res)`，**完全忽略 Range**；容器书分支（`server/routes/api.ts:190-194`）同样是 200 全量。
+- 代码注释写明 node-stream-zip「只能把整条解压出来，做不了字节切片」（`server/routes/api.ts:243` 附近）。
+- RFC 9110 §14 允许服务端忽略 `Range` 回 200 全量[来源 15]。MDN 的判据是：没有 byte-range 时 `seekable` 等价于 `buffered`，只能 seek 已下载的部分[来源 7]。
+
+**推断（明确标注为推断）**
+
+- 200 + 完整 `Content-Length` 下，浏览器会把整个条目当完整资源下载；下载完成前进度条只能覆盖已缓冲区间，**跳转到未下载部分不可用**。能否开始播放取决于前几秒是否已缓冲，而不是文件总大小。
+- 「小视频边界」没有一手阈值；实际取决于「完整下载耗时」。经验判断（建议，非事实）：几 MB、低码率的短片在宽带/局域网下通常一次缓冲即可，感知接近可拖；几十 MB 以上会明显等。
+- 浏览器在收到 200（Range 被忽略）后是否会在拖动时重发 Range、是否重下整个文件：**没有找到一手文档，未验证**。
+
+**建议**：视频不要放进 zip；直接放目录，走 `server/routes/api.ts:212` 的普通文件分支拿真 206。若必须保留 zip 内视频：把该分支的 `Accept-Ranges` 改成 `none`（现在等于宣告了一个做不到的能力），并在 UI 上弱化 seek/进度条。
+
 ## 4. 首帧与时长
 
 ### 4.1 服务端（事实）
@@ -111,6 +163,26 @@
 - 如果一定要自动首帧：在**播放页**用浏览器侧 canvas 抽帧（同源 `/file` 不需要 `crossorigin`），把 dataURL 存前端缓存，别回写服务端。代价是首次要真的 download 一段视频，长视频首帧可能很慢。
 - **时长探测必须容忍 `moov` 在文件尾**：没有 faststart 的文件，浏览器要发一次尾部 Range 才能拿到 `duration`，首帧/时长都会慢一拍。入库/转码时用 `ffprobe` 或 `+faststart` 校验，比运行时兜底便宜。
 - 如果将来允许加依赖，优先「只读容器元数据」的纯 JS 库，而不是打包 ffmpeg 二进制（体积/许可/Windows 分发都更重）。这是建议，不是本次结论。
+
+### 4.4 动图缩略图：animated WebP / APNG 与 sharp（追加研究）
+
+**事实**
+
+- animated WebP：BCD 的 `animation` 支持是 Chrome 32 / Edge 18 / Firefox 65 / Safari 14[来源 35]；MDN 说 WebP 支持动画、现代主流浏览器广泛支持[来源 37]。
+- APNG：BCD 的 `animation` 支持是 Chrome 59 / Firefox 3 / Safari 8[来源 36]；MDN 的支持表写 Chrome / Edge / Firefox / Opera / Safari[来源 37]。
+- sharp 的构造参数 `animated` **默认 false**，此时只读第一帧；设 true 才读全部帧，文档列的多帧输入是 GIF / WebP / TIFF[来源 38]。`metadata` 的 `pages` 说明也只列 "TIFF, HEIF, PDF, animated GIF and animated WebP"，**不含 APNG**[来源 39]。
+- JPEG 格式本身不支持动画；sharp 的 `.jpeg()` 输出单帧静止图[来源 37][来源 38]。
+
+**结论**
+
+- 现有 `/Thumbnail` 链路（`server/routes/api.ts:280` 起，sharp → `image/jpeg`）对 animated WebP 只能得到**第一帧的静帧**：默认 `animated:false` 决定了这一点；即使传 `animated:true`，JPEG 也装不下动画。
+- 对 APNG：sharp 官方多帧清单没有 APNG，是否识别动画、是否只取首帧**没有官方承诺，未验证**；最可能是按普通 PNG 取首帧。
+
+**建议**
+
+- 列表缩略图继续用静帧是合理默认，不需要改 sharp 调用。
+- 若产品要「缩略图会动」，只能让 `<img>` 直接指向 `/file/...` 原图（浏览器原生播 animated WebP/APNG），不要经过 sharp；代价是原图体积与解码开销。
+- 若担心 APNG/动图 WebP 在 sharp 下报错或尺寸异常，用真实文件做一次回归；本次未实测。
 
 ## 5. 大文件与 seek
 
@@ -162,6 +234,11 @@
 6. **缩略图先不做服务端方案**：列表用图标，详情用 `poster`（可选）；自动首帧留作后续用浏览器 canvas 抽帧 + 前端缓存。
 7. **测试**：至少覆盖 206 的 `Content-Range`/`Content-Length`、416 的 `bytes */size`、无 Range 的 200、`Content-Type: video/mp4`、以及 iOS Safari 真机上的 `playsinline` 内联播放。Express 对 GET 路由的 HEAD 行为未在本次核实，**待验证**。
 8. **不要做的事**：不给服务端加 ffmpeg 依赖；不做多音轨切换；不做 fragmented MP4；不做自定义全屏。
+9. **AVI/MKV 直接标不支持或需转码**，不要试图改后缀/MIME 蒙混：AVI 无容器入口，MPEG-4 Part 2 在 Chrome/Safari 也不支持；MKV 只作桌面增强（Chrome/Firefox），Safari/iOS 不承诺。
+10. **若做转码**：后台队列 + 产物缓存（按 `editUUID` + 文件指纹），绝不进请求路径；输出统一 MP4/H.264/AAC + `+faststart`；注意 x264 的 GPL 义务与 ffmpeg 二进制分发方式。
+11. **视频不要放进 zip**；如果已经放了，zip 条目分支要么改成可 Range，要么至少去掉 `Accept-Ranges: bytes`，并在 UI 上说明不可拖。
+12. **动图缩略图保持静帧**；需要动图预览时让 `<img>` 直接指向 `/file` 原图，不经过 sharp。
+
 
 ## 8. 仍不确定的点
 
@@ -171,6 +248,12 @@
 - 没有 faststart 的 MP4 在各浏览器上"多久能拿到 duration"：只有 FFmpeg 的定性说明，没有浏览器侧一手量化。
 - 服务端只读 `moov` 拿时长/尺寸的纯 JS 方案：本次没有选型（不改依赖），可行性高但未实测。
 - Express 5 对 `HEAD /file/...` 的默认处理：未核实。
+- Chrome 实际播放 MKV 的 codec 组合：MIME 表登记只说明「容器可被识别」，不代表任意 MKV 里的 H.264 profile/level、10-bit、Dolby Vision 都能解。
+- Safari/iOS 遇到 MKV/AVI 的具体失败表现（`error` 事件 vs 黑屏 vs 灰框）未实测。
+- MJPEG 在 `<video>` 中的支持：没有官方声明，也没有实测。
+- zip 条目在 200 响应下各浏览器拖动时是否重发 Range、是否重下整个文件，未验证。
+- sharp 对 APNG 的实际行为（按 PNG 取首帧 / 报错 / 多帧识别），以及 `animated:true` 后再 `.jpeg()` 的行为，未实测。
+- ffmpeg 转码的实际耗时与体积：本机没有 ffmpeg，无实测数字，不编。
 
 ## 9. 来源
 
@@ -198,3 +281,19 @@
 22. MDN browser-compat-data, `api/HTMLVideoElement.json`（requestPictureInPicture / requestVideoFrameCallback 支持数据）— https://github.com/mdn/browser-compat-data/blob/main/api/HTMLVideoElement.json
 23. WebKit blog, "WebKit Features in Safari 16.4"（Fullscreen API 仅 macOS / iPadOS）— https://webkit.org/blog/13966/webkit-features-in-safari-16-4/
 24. MDN, `HTMLVideoElement.requestPictureInPicture()`（异常与 Permissions Policy）— https://developer.mozilla.org/en-US/docs/Web/API/HTMLVideoElement/requestPictureInPicture
+25. Chromium, media/base/mime_util_internal.cc — https://source.chromium.org/chromium/chromium/src/+/main:media/base/mime_util_internal.cc
+26. Firefox, dom/media/webm/MatroskaDecoder.cpp — https://searchfox.org/mozilla-central/source/dom/media/webm/MatroskaDecoder.cpp
+27. Firefox, dom/media/DecoderTraits.cpp — https://searchfox.org/mozilla-central/source/dom/media/DecoderTraits.cpp
+28. WebKit, Source/WebCore/platform/MIMETypeRegistry.cpp — https://github.com/WebKit/WebKit/blob/main/Source/WebCore/platform/MIMETypeRegistry.cpp
+29. Apple, AVFileType — https://developer.apple.com/documentation/avfoundation/avfiletype
+30. FFmpeg, License and Legal Considerations — https://ffmpeg.org/legal.html
+31. VideoLAN, x264（GNU GPL）— https://www.videolan.org/developers/x264.html
+32. FFmpeg, libx264 encoder 文档 — https://ffmpeg.org/ffmpeg-codecs.html#libx264
+33. FFmpeg wiki, Encode/H.264（preset/CRF/faststart）— https://trac.ffmpeg.org/wiki/Encode/H.264
+34. FFmpeg, aac encoder 文档 — https://ffmpeg.org/ffmpeg-codecs.html#aacenc
+35. MDN BCD, mediatypes/image/webp.json（animation 版本）— https://github.com/mdn/browser-compat-data/blob/main/mediatypes/image/webp.json
+36. MDN BCD, mediatypes/image/png.json（APNG animation 版本）— https://github.com/mdn/browser-compat-data/blob/main/mediatypes/image/png.json
+37. MDN, Image file type and format guide（APNG/WebP/JPEG）— https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Image_types
+38. sharp, Constructor API（animated 默认 false；GIF/WebP/TIFF 多帧）— https://sharp.pixelplumbing.com/api-constructor
+39. sharp, Input metadata（pages 列表不含 APNG）— https://sharp.pixelplumbing.com/api-input
+
