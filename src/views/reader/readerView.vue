@@ -246,6 +246,13 @@ const init = async () => {
         }
         // 先算好 jump 再挂载阅读组件，首帧就落在目标页
         const target = restoreJump(clickedStart, clickedName);
+        // 视频页不能在瀑布流播放：从书架点开视频时自动切到单页
+        const targetPage = readerPages.value[target];
+        const targetExt = (targetPage?.ext || "").toLowerCase();
+        const targetIsVideo = targetPage?.extType === "video" || targetExt === "mp4" || targetExt === "webm";
+        if (targetIsVideo && readerSettings.mode === "waterfall") {
+            readerSettings.mode = "paged";
+        }
         currentIndex.value = target;
         currentName.value = readerPages.value[target]?.name ?? "";
         applyJump(target);

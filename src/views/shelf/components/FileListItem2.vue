@@ -115,7 +115,10 @@ const toClick = async (item: ViewFileType) => {
     }
     // 电子书、视频与 zip 走同一套「取页列表 → 进阅读页」的流程
     const list: ViewFileExtType[] = ["image", "video", "zip", "pdf", "epub", "mobi"];
-    if (list.includes(item.extType)) {
+    // 兜底：旧服务端/缓存里的条目可能没有 video 这个 extType，按扩展名仍可识别
+    const ext = (item.ext || "").toLowerCase();
+    const isVideoByExt = ext === "mp4" || ext === "webm";
+    if ((item.extType && list.includes(item.extType)) || isVideoByExt) {
         const res = await viewStore.updateComicViewList(item);
         if (res.code != 200) {
             msg.error(res.msg);
