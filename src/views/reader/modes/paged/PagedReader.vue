@@ -19,7 +19,7 @@
                     @canplay="onVideoCanPlay"
                     @play="onVideoPlay"
                     @pause="onVideoPause"
-                    @error="onImgError"
+                    @error="onVideoError"
                 ></video>
                 <img
                     v-else
@@ -51,7 +51,7 @@
                 @canplay="onVideoCanPlay"
                 @play="onVideoPlay"
                 @pause="onVideoPause"
-                @error="onImgError"
+                @error="onVideoError"
             ></video>
             <img
                 v-else-if="page && pageUrl"
@@ -626,6 +626,9 @@ const toggleVideo = () => {
 
 const onVideoLoadedMetadata = (e: Event) => {
     const el = e.target as HTMLVideoElement;
+    if (el !== videoEl.value) {
+        return;
+    }
     markVideoReady();
     const current = page.value;
     if (current && el.videoWidth > 0 && el.videoHeight > 0) {
@@ -638,18 +641,34 @@ const onVideoLoadedMetadata = (e: Event) => {
     void tryAutoPlay();
 };
 
-const onVideoCanPlay = () => {
+const onVideoCanPlay = (e: Event) => {
+    if (e.target !== videoEl.value) {
+        return;
+    }
     markVideoReady();
     void tryAutoPlay();
 };
 
-const onVideoPlay = () => {
+const onVideoPlay = (e: Event) => {
+    if (e.target !== videoEl.value) {
+        return;
+    }
     videoPlaying.value = true;
 };
 
-const onVideoPause = () => {
+const onVideoPause = (e: Event) => {
+    if (e.target !== videoEl.value) {
+        return;
+    }
     videoWanted.value = false;
     videoPlaying.value = false;
+};
+
+const onVideoError = (e: Event) => {
+    if (e.target !== videoEl.value) {
+        return;
+    }
+    onImgError();
 };
 
 // 换页时重置加载态；视频页同时把播放状态归零，等新元素挂载后自动播放
