@@ -33,6 +33,14 @@ export const normalizeFileName = (value?: string | null): string => {
 export const FILE_URL_VERSION = "2";
 
 /**
+ * 按路径段做 URL 编码。目录 / 压缩包名里可能带 `#`、`?`、`%`：`#` 不编码会被浏览器
+ * 当成 fragment，`?` 之后会被当成 query，请求实际打到父目录（表现为阅读页整本 500 /
+ * 显示成父目录的首图）。缩略图链路（ThumbImage.vue 的 encodePath）一直这么做，这里补齐。
+ */
+const encodePathSegments = (p: string): string =>
+    p.split("/").filter(Boolean).map(encodeURIComponent).join("/");
+
+/**
  * 统一的文件地址拼装：`api/file/<editUUID>/<index>` 后面只有 basePath 非空时才追加，
  * 避免出现结尾的 `/` 或 `/.`（两者都能被服务端解析，但不是正确形态）。
  * 末尾带版本号，见 FILE_URL_VERSION 的说明。
@@ -40,6 +48,6 @@ export const FILE_URL_VERSION = "2";
 export const buildFileUrl = (editUUID: string, index: number, basePath?: string | null): string => {
     const base = normalizeBasePath(basePath);
     const head = `api/file/${editUUID}/${index}`;
-    const tail = base ? `${head}/${base}` : head;
+    const tail = base ? `${head}/${encodePathSegments(base)}` : head;
     return `${tail}?v=${FILE_URL_VERSION}`;
 };
