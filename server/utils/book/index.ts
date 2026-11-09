@@ -2,19 +2,13 @@ import { getFileExt } from "../index";
 import { BookError } from "./errors";
 import { getEpubPageBuffer, getEpubPageList } from "./epub";
 import { isBookExtType } from "./pages";
+import { getMobiPageBuffer, getMobiPageList } from "./mobi";
 import { getPdfPageBuffer, getPdfPageList } from "./pdf";
 
 export type BookKind = "pdf" | "epub" | "mobi";
 
 export function bookKindOf(extType?: ViewFileExtType): BookKind | undefined {
     return isBookExtType(extType) ? extType as BookKind : undefined;
-}
-
-/** PDF / EPUB 已接；MOBI 留到阶段 3，点开时给出明确提示而不是静默 404 */
-function notYet(kind: BookKind) {
-    return new BookError(415, kind === "mobi"
-        ? "MOBI 支持还在开发中（阶段 3），暂不可用；可先压成 zip 或按图片目录阅读。"
-        : "该格式暂不支持。");
 }
 
 /** 容器书 → 页列表，形状与 getMyStreamZip 那条链路完全一致（list + baseFile + basePath + start） */
@@ -27,7 +21,7 @@ export async function getBookViewList(p: string, f: ViewFileType, basePath: stri
         ? getPdfPageList(p, f)
         : kind === "epub"
             ? getEpubPageList(p, f)
-            : Promise.reject(notYet(kind)));
+            : getMobiPageList(p, f));
     return {
         list,
         baseFile: f,
@@ -57,7 +51,11 @@ export async function getBookPageBuffer(opts: {
             index: opts.index
         });
     }
-    throw notYet(opts.kind);
+    // MOBI 页图同样是 record 里的原图，不渲染、不占槽
+    return await getMobiPageBuffer({
+        absPath: opts.absPath,
+        index: opts.index
+    });
 }
 
 /**
@@ -86,9 +84,18 @@ export async function getBookThumbBuffer(opts: {
         });
         return page?.buffer;
     }
-    if (kind !== "pdf") {
-        // MOBI 阶段 3 之前就是「暂时没有缩略图」，不要让它变成整屏报错
-        return undefined;
+    if (kind === "mobi") {
+        // 取第 1 页原图交给 sharp；打不开（azw3 / 文字版 / DRM）就当没缩略图，书架显示占位
+        try {
+            const page = await getMobiPageBuffer({
+                absPath: opts.absPath,
+                index: opts.pageIndex
+            });
+            return page?.buffer;
+        }
+        catch {
+            return undefined;
+        }
     }
     // 缩略图要小，但 pdfjs 的渲染质量随尺寸下降；按 2 倍宽渲染再由 sharp 缩，字才不糊
     const renderWidth = Math.min(2000, Math.max(240, Math.round(opts.width) * 2));

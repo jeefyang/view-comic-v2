@@ -93,7 +93,7 @@
 - 渲染槽位：`renderQueue.ts` 把 sharp 缩略图与容器书页图合并成同一组（运行 2 / 排队 32），满则 503 + `Retry-After: 3`。以前 thumb.ts 内的同名常量已迁走，`ThumbBusyError` 只是别名。
 - 已知限制：非嵌入 CJK 字体（WPS 导出、无 `FontFile`）的 PDF 页文字不显示（图片 / 矢量正常），原因与取舍见 `docs/specs/pdf-epub-mobi.md` §12.3；`@napi-rs/canvas` 钉 0.1.100，1.1.0 在 Windows 上 `drawImage` 会 native 崩溃。
 - EPUB：`book/epub.ts` 用 `node-stream-zip` + `fast-xml-parser`（精确 5.12.0）；句柄 2 本 LRU 且同一句柄读取串行，container.xml → OPF manifest/spine 定页序；spine 是 `image/*`（非 SVG）直接一页，XHTML / SVG 取正文唯一 `<img>` / `<image>`（`%20`、`../`、`xlink:href` 都验过）；文字页 / 多图页整本 415；DRM 看 `META-INF/encryption.xml` 的非字体算法或 `license.lcpl`。页图是包内原字节透传（不转码、不占槽、不写 `data/pages`），缩略图取第 1 页交 sharp。
-- 阶段 3 未接：`.mobi` / `.azw3` 点开回 415「MOBI 支持还在开发中（阶段 3）」；书架卡片与封面已有入口。
+- MOBI / AZW3：`book/mobi.ts` 只读 PDB 头 + record0（PalmDOC / MOBI / EXTH），页 = `firstImageIndex` 起的图片 record；判定固定版式先看 EXTH 122 `fixed-layout` 或 EXTH 123 `book-type ∈ {comic, magazine}`，否则「文本总长 < 图片总长 5% 且图片 ≥2」兜底，再不行整本 415 文字版。双格式 MOBI 只看 MOBI7 段（EXTH 121 边界之后是 KF8，含图也不计入）；`azw3`（含 `version ≥ 8` 的 KF8-only）回 415 建议转 EPUB；DRM = Encryption Type ≠ 0 或 DRM offset/count 不为 `0xFFFFFFFF`。页图同样是 record 原字节透传，不占槽、不落盘。句柄不缓存（只读头 + 按 index 偏移，不值得缓存）。
 
 ### 历史与书签
 - 数据存云端 `userConfig`（`data/userConfig.json`）：`readHistory`（最多 200 条，`openTime` 倒序）与 `bookmarks`（最多 500 条，`createTime` 倒序），读写都在 `src/views/history/historyData.ts`，页面是 `src/views/history/historyView.vue` 的两个标签页。
@@ -146,14 +146,14 @@
 - 阅读边距：设置 → 阅读 → 「阅读边距」可调上/下/左/右（0–48px，默认 8/8/8/8）与瀑布流图片间距（0–48px，默认 6），瀑布流与单页都生效，改完 500ms 防抖写云端（`paddingTop/Bottom/Left/Right`、`imageGap`，旧的 `padding` / `pageMargin` 只做一次迁移读取）
 - 书架快捷滚动：右下角悬浮两个按钮（回到顶部 / 滚到底部），`FileListItem2` 通过 `defineExpose` 暴露 `scrollToTop/scrollToBottom/snapshot`
 - 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
-- 电子书：PDF / EPUB 已按「模拟 zip 页清单」接入（书架入口、页列表、按页出图、页缩略图、进度 / 书签）；EPUB 页图是包内原图透传，不占渲染槽、不落盘；MOBI / azw3 入口在、点开回 415（阶段 3）
+- 电子书：PDF / EPUB / MOBI 已按「模拟 zip 页清单」接入（书架入口、页列表、按页出图、页缩略图、进度 / 书签）；EPUB / MOBI 页图是包内原图透传，不占渲染槽、不落盘；azw3 与文字版 MOBI / 可重排 EPUB 回 415 文案
 - 安全：`/file`、`/view/*` 全部限制在书库根内
 
 ## 已知待办
 
 - 那 7 个历史类型错误还在，`pnpm build:check` 会因此失败（`pnpm build` 不受影响）
 - PDF 已知限制：非嵌入 CJK 字体的页文字不显示（本仓库测试的 WPS 导出 PDF 中招）；`@napi-rs/canvas` 钉 0.1.100，升级前先回归 `drawImage`
-- MOBI 固定版式（阶段 3）尚未实现，点开是 415 文案；文字版 / 多图页 EPUB 整本 415（可用 calibre 转图片型）
+- MOBI 只做固定版式 / 图片型：文字版、`azw3`（含 KF8-only）回 415；BMP 页缩略图靠 `pages.ts` 的 `decodeBmpRaw()`（sharp 不认 BMP，只解 24/32 位 BI_RGB，调色板 / RLE 的 BMP 缩略图仍 404）；文字版 / 多图页 EPUB 整本 415（可用 calibre 转图片型）
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - `rar` 仍被当普通文件处理（书架排序 / 过滤 / 搜索词已持久化，别再当待办）
 - 视频文件只做了类型角标，未取首帧缩略图

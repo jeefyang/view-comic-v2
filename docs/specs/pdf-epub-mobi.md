@@ -395,3 +395,28 @@ class BookError extends Error { constructor(public status: 400 | 413 | 415, mess
 | 回归 | PDF 30 页 / 出图 / 缩略图不变；`.cbz` 走 zip 链路 3 页 + 页图 200；`.mobi` 仍是阶段 3 的 415 文案；`pnpm build` 通过；`pnpm type-check` 仍只有既有 7 个错误 |
 
 - 已知取舍：可重排 EPUB 不支持（整本 415）；用 CSS `background-image` 或一张 XHTML 拼多图的固定版式书会被拒（§10.3 已记录）；页数很多的 EPUB 首次打开要把所有 XHTML 读一遍（只读章节小文件，不读图）。
+
+### 12.8 阶段 3 实现备注（MOBI 落地后补记）
+
+- 只读头部区段：78 字节 PDB 头（`numRecords@76` + record offset 表），再读 record0 的 PalmDOC / MOBI / EXTH 头；页图按偏移读整条 record，不解析正文 HTML、不缓存句柄（只读头 + 按 index 定位，缓存收益抵不过失效复杂度）。
+- 页判定以 MOBI 头 `firstImageIndex`（`@0x6C`）为准；该值为 `0xFFFFFFFF`（不少转换工具这么写）时兜底从 `textRecordCount + 1` 开始扫。候选 record 读前 16 字节按 magic 判 jpg/png/gif/bmp，认不出的跳过；FLIS / FCIS / SRCS 这类非图片 record 靠 magic 自然排除。
+- 固定版式判定顺序（spec §3.5）：EXTH 122 `fixed-layout=1` 或 EXTH 123 `book-type ∈ {comic, magazine}` → 固定版式；否则「文本 record 总长 < 图片总长 5% 且图片 ≥2」兜底；再否则 415 文字版。双格式 MOBI 只认 MOBI7 段：EXTH 121 给出 KF8 边界（`kf8Boundary`），只扫边界之前的 record，边界后补的图不计入页。
+- `azw3` 一律 415（含 `.mobi` 扩展名但 MOBI header `version ≥ 8` 的 KF8-only 文件）；文案是「azw3 暂不支持，请转为 EPUB 后重试。」。DRM 判定 = PalmDOC `Encryption Type ≠ 0`，或 MOBI 头 DRM offset / count 不为 `0xFFFFFFFF`。
+- 页图是 record 原字节透传：不转码、不落盘、不写 `data/pages`、不占渲染槽位；`Content-Type` 由 magic 判出的扩展名给出（`image/jpeg` / `png` / `gif` / `bmp`）。缩略图取第 1 页字节交 sharp。
+- BMP 取舍：sharp 不认 BMP，直接喂会 `Input format: unsupported`，缩略图 404。为此 `server/utils/book/pages.ts` 加了 `decodeBmpRaw()`（只支持 24/32 位、`BI_RGB`，处理行 4 字节对齐与自底向上，32 位整片 alpha=0 时补 255），`thumb.ts` 的 `render()` 检测到 Buffer 以 `BM` 开头就先解成 RGBA 再交给 sharp；页图本身仍透传 BMP，浏览器可直接显示。调色板 / RLE 压缩的 BMP 缩略图仍会 404（页图正常）。
+
+实测（2026-11-09，`PORT=6111` 隔离实例 + 仓库外 Python 手写 PDB 造的 fixture + 用户提供的真实书）：
+
+| 用例 | 结果 |
+| --- | --- |
+| fixture 固定版式 3 页（jpg / png / bmp；EXTH 122=1、123=comic，firstImage=2） | 页列表 `0000001.jpg` / `0000002.png` / `0000003.bmp`；三页 200 且 Content-Type 分别为 `image/jpeg` / `image/png` / `image/bmp`；字节与包内 record 逐字节一致；`/3` → 404 |
+| fixture `auto.mobi`（firstImage=0xFFFFFFFF，走 5% 兜底） | 2 页 |
+| fixture `dual.mobi`（EXTH 121 边界后多塞一张 JPEG） | 2 页（边界后的图未计入） |
+| fixture 文字版 / DRM / KF8-only / `.azw3` / 非 PDB | 415 文字版文案 / 415 DRM 文案 / 415 azw3 文案 / 415 azw3 文案 / 400 |
+| 缩略图（宽 160） | 200 `image/jpeg`；BMP 页（`0000003.bmp`）修好后 200 732 字节；容器封面取第 1 页 845 字节 |
+| 真实书 `test/view/mobi/sample-1.mobi`（33 records，1 条文本、30 张 JPEG、无 EXTH 121/122/123） | 30 页 `0000001.jpg`…`0000030.jpg`；第 0 页 365290 字节，sha256 与包内 record 2 一致；第 29 页 200；`/30` → 404；缩略图 200 |
+| `sample-2.mobi` | 30 页，打开正常 |
+| 10 页并发 | 10×200（MOBI 不占渲染槽，无 503） |
+| `data/pages` 前后 | 76 → 76（MOBI 不落盘） |
+| 回归 | PDF 30 页 / 出图 200；EPUB 30 页 / 出图 200；`pnpm build` 通过；`pnpm type-check` 仍只有既有 7 个错误；`dist/server/prod.mjs`（`PORT=6222`）实测 MOBI 第 0 页 200 365290 字节、BMP 缩略图 200、页列表 30 页、首页 HTML 200 |
+| 已知限制 | 文字版 MOBI、`azw3` 不支持；调色板 / RLE BMP 缩略图 404（页图正常）；MOBI 只支持 MOBI7 段，KF8 图画书需转 EPUB |

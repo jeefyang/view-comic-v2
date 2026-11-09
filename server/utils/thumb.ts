@@ -6,7 +6,7 @@ import sharp from "sharp";
 import { imageTypeList, zipTypeList } from "@common/utils/ext.js";
 import { sortFileList } from "@common/utils/nameSort.js";
 import { getBookThumbBuffer } from "./book/index.js";
-import { parsePageName } from "./book/pages.js";
+import { decodeBmpRaw, parsePageName } from "./book/pages.js";
 import { DATA_DIR } from "./cache.js";
 import { getLibCache, resolveLibRoot } from "./library.js";
 import { getMyStreamZip } from "./myStreamZip.js";
@@ -240,7 +240,12 @@ async function zipEntryBuffer(file: string, entry: string): Promise<Buffer | und
 }
 
 async function render(source: string | Buffer, out: string, width: number): Promise<Buffer> {
-    const buffer = await sharp(source)
+    // sharp 不认 BMP：漫画 MOBI / EPUB 里的未压缩 BMP 页先自己解成 RGBA，再照常缩放输出 jpeg
+    const bmp = Buffer.isBuffer(source) ? decodeBmpRaw(source) : undefined;
+    const pipeline = bmp
+        ? sharp(bmp.data, { raw: { width: bmp.width, height: bmp.height, channels: 4 } })
+        : sharp(source);
+    const buffer = await pipeline
         .rotate()
         .resize({ width, withoutEnlargement: true })
         .jpeg({ quality: JPEG_QUALITY, progressive: true })
