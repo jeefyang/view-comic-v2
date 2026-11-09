@@ -100,7 +100,7 @@ import { useConfigStore } from "@/stores/config";
 import { readerPages } from "@/views/reader/readerPages";
 import { readerSettings } from "@/views/reader/readerSettings";
 import type { ReaderModeHandle } from "@/views/reader/modes/types";
-import { computeFit, computeVideoFit } from "@/views/reader/modes/fitStrategies";
+import { computeFit } from "@/views/reader/modes/fitStrategies";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
 import { slowNetwork } from "@/utils/network";
@@ -259,6 +259,12 @@ const hasRealVideoSize = computed(() => {
 const pageSize = computed(() => {
     const raw = rawPageSize.value;
     if (isVideo.value && (!raw.width || !raw.height)) {
+        // 视频 metadata 回来前不知道真实比例。直接按可用视口占位，
+        // 这样 contain 会先把视频放在正确的位置，metadata 回来只做等比校正，
+        // 不会先按 16:9 缩成一条、再突然跳成铺满。
+        if (viewSize.width > 0 && viewSize.height > 0) {
+            return { width: viewSize.width, height: viewSize.height };
+        }
         return { width: 16, height: 9 };
     }
     return raw;
@@ -287,11 +293,9 @@ const fitSize = computed(() => {
 
 const fit = computed(() => {
     const { width, height } = fitSize.value;
-    // 视频旋转时用 cover 铺满，避免宽高比不合造成的黑边；图片仍走 contain
-    if (isVideo.value && readerSettings.fitMode === "rotate") {
-        return computeVideoFit(width, height, viewSize.width, viewSize.height);
-    }
-    // rotate 与裁切互相打架，双开页时退化回 contain
+    // rotate 与裁切互相打架，双开页时退化回 contain。
+    // 视频和图片共用同一套 contain 逻辑：旋转只改变朝向，不放大到裁边，
+    // 保证「刚好装进可用视口」，首次进入和切换适配方式结果一致。
     const mode = isSpread.value && readerSettings.fitMode === "rotate" ? "fit" : readerSettings.fitMode;
     return computeFit(width, height, viewSize.width, viewSize.height, mode);
 });
