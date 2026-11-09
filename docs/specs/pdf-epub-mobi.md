@@ -367,3 +367,31 @@ class BookError extends Error { constructor(public status: 400 | 413 | 415, mess
 - 服务端六项已验：页列表（114 页 / 7 位页名 / index 0 起）、按页出图、越界 404、缩略图取第 1 页且与页图不同、缓存命中 / 清除、503 退避、`.epub` / `.mobi` / `.azw3` 的 415 文案、损坏 PDF 的 400、`cbz` 走既有 zip 链路（含封面与页缩略图）。
 - 浏览器端（瀑布流 / 单页 / 双开 / 进度 / 书签）沿用既有阅读页，未改一行前端取图逻辑，仍需人工点一遍（`pnpm dev` 后打开 PDF）。
 - `pnpm build` 通过；`pnpm type-check` 仍只有既有 7 个错误。
+
+### 12.7 阶段 2 实现备注（EPUB 落地后补记）
+
+- 依赖 `fast-xml-parser@5.12.0`（精确版本，MIT，纯 JS）。解析走 `ignoreAttributes: false` + `attributeNamePrefix: "@_"`，属性名再按本地名匹配，所以 `xlink:href` 也能取到。
+- 句柄：`StreamZip.async` 按「绝对路径 + mtime」做 2 本 LRU；同一句柄的读取串行化（`handle.chain` 串到上一笔读之后再跑，关包前先等链跑空），避免多个页面请求同时抢一个 zip 的内部状态。
+- 页序映射：`META-INF/container.xml` → `rootfile@full-path` → OPF；`manifest(item id/href/media-type)` + `spine(itemref idref)`，spine 顺序就是页序。条目名大小写、`./` 前缀、`%20` 编码都在 `entryNames` 里归一后兜底。
+- 一页 = 一张图：`media-type` 是 `image/*`（非 SVG）时该条目本身是一页；`application/xhtml+xml` / `text/html` / `application/xml` / `text/xml` / `image/svg+xml` 时读该条目，正文恰好一个 `<img>` 或 `<image>` 就取它（`../`、子目录、`%20`、`xlink:href` 都验过）。文字页、零图页、多图页一律整本 415，不跳页做残书。
+- DRM 判定只读 `META-INF/encryption.xml`：算法不在字体混淆白名单（`http://www.idpf.org/2008/embedding`、`http://ns.adobe.com/pdf/enc#rc`）里，或有 `EncryptedData` 却读不到算法 → 415；`META-INF/license.lcpl` 存在同样 415。只做字体混淆的书正常打开。
+- 页图是**包内原字节透传**：不转码、不落盘、不写 `data/pages`、不占渲染槽位；`Content-Type` 先看条目扩展名，认不出再按头 16 字节魔数判（`sniffImageExt` 支持 jpg/jpeg/png/gif/webp）。缩略图取第 1 页原字节交 sharp，也不占槽。
+- 踩坑（已修）：`fast-xml-parser` 把同名多元素给成数组，遍历器最初只递归数组元素的子节点、没把元素本身当命中，导致 `manifest` / `spine` 有多项时被当成空（单页书反而正常）。遍历器现在先把数组元素按同一标签名回调，再递归。
+- 踩坑（已修）：spine 项的 `media-type` 是 `image/svg+xml` 时必须先走「取页内唯一图」分支，不能被 `image/*` 的直通分支接走（SVG 本身不是能当页图的位图格式，会被静默跳过，表现为少一页）。
+
+实测（2026-11-09，`PORT=6111` 隔离实例 + 仓库外 Python 造的 EPUB fixture + 用户提供的真实书）：
+
+| 用例 | 结果 |
+| --- | --- |
+| fixture 固定版式 6 页（含空格条目名 `images/p 1.jpg` 用 `%20` 引用、XHTML 内嵌 SVG `<image xlink:href>`、`../OEBPS/` 越级引用、spine 直接 `image/svg+xml`、`.jpeg` 页） | 页列表 6 页、页名 / index 正确；6 页逐字节与包内原图一致；`/6` → 404 |
+| 缩略图（宽 160 / 240） | 200 `image/jpeg`，来自第 1 页，与页图字节不同 |
+| 文字版 EPUB / 双图页 EPUB | 415 §7 文案 |
+| `encryption.xml` 为字体混淆 | 正常打开（6 页） |
+| `encryption.xml` 为 AES DRM | 415 DRM 文案 |
+| 非 zip 的坏文件 | 400「文件无法解析，可能已损坏。」 |
+| 真实书 `test/view/epub/sample-1.epub`、`sample-2.epub`（各 30 页图片型） | 30 页；第 0 页逐字节等于 `OEBPS/images/img-081.jpg` / `img-097.jpg`；第 29 页 200；缩略图 200；`/30` → 404 |
+| `data/pages` 前后 | 76 → 76（EPUB 不落盘） |
+| 12 页并发 | 12×200（EPUB 不占渲染槽，无 503） |
+| 回归 | PDF 30 页 / 出图 / 缩略图不变；`.cbz` 走 zip 链路 3 页 + 页图 200；`.mobi` 仍是阶段 3 的 415 文案；`pnpm build` 通过；`pnpm type-check` 仍只有既有 7 个错误 |
+
+- 已知取舍：可重排 EPUB 不支持（整本 415）；用 CSS `background-image` 或一张 XHTML 拼多图的固定版式书会被拒（§10.3 已记录）；页数很多的 EPUB 首次打开要把所有 XHTML 读一遍（只读章节小文件，不读图）。
