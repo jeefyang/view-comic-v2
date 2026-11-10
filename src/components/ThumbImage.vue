@@ -26,6 +26,12 @@ const props = withDefaults(defineProps<{
 const url = ref("");
 const failed = ref(false);
 
+/** 视频缩略图的取帧策略改过，给 URL 和 IndexedDB 键都加版本，避免继续读旧的黑帧缓存 */
+const VIDEO_THUMB_VERSION = 2;
+function isVideoPath(path: string) {
+    return /\.(mp4|webm)$/i.test(path);
+}
+
 // 请求失败（比如确实是视频、空包）的 key 记一份，本页生命周期内不再重复请求
 const failedKeys = new Set<string>();
 
@@ -91,7 +97,8 @@ async function load() {
         return;
     }
 
-    const key = thumbCacheKey(props.editUuid, props.width, props.path);
+    const videoVersion = isVideoPath(props.path) ? VIDEO_THUMB_VERSION : undefined;
+    const key = thumbCacheKey(props.editUuid, props.width, props.path, videoVersion);
     const cached = await getThumbBlob(key);
     if (current !== seq) {
         return;
@@ -105,7 +112,7 @@ async function load() {
         return;
     }
 
-    const request = `api/Thumbnail/${props.editUuid}/${props.width}/${encodePath(props.path)}`;
+    const request = `api/Thumbnail/${props.editUuid}/${props.width}/${encodePath(props.path)}${videoVersion ? `?v=${videoVersion}` : ""}`;
     await acquire();
     const mine = current === seq;
     try {

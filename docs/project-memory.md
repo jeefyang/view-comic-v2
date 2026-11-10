@@ -9,7 +9,7 @@
 ## 技术栈与启动
 
 - 前端：Vue 3.5 + TS + naive-ui + pinia + vue-router(hash) + UnoCSS + `@vicons/*`
-- 后端：Express 5 + bcrypt + node-stream-zip + image-size + dotenv + sharp（缩略图）+ ffmpeg/ffprobe（可选，MP4/WebM 视频缩略图）
+- 后端：Express 5 + bcrypt + node-stream-zip + image-size + dotenv + sharp（缩略图）+ ffmpeg / ffprobe（可选，MP4/WebM 视频中间帧缩略图）
 - 构建：vite 7 + vue-tsc
 - `pnpm dev` → `node server/dev.mjs`：**一个进程、一个端口（读 .env 的 PORT，当前是 6006）**
   - `server/dev.mjs` 用 Vite 的 JS API 建 `middlewareMode` dev server（页面 / HMR / 静态资源都走它），`httpServer` 自己 `listen`
@@ -159,7 +159,7 @@
 - 滚动条：全局统一成细圆角半透明滑块（`src/assets/scrollbar.css`），两个抽屉改用 naive 滚动条
 - 阅读边距：设置 → 阅读 → 「阅读边距」可调上/下/左/右（0–48px，默认 8/8/8/8）与瀑布流图片间距（0–48px，默认 6），瀑布流与单页都生效，改完 500ms 防抖写云端（`paddingTop/Bottom/Left/Right`、`imageGap`，旧的 `padding` / `pageMargin` 只做一次迁移读取）
 - 书架快捷滚动：右下角悬浮两个按钮（回到顶部 / 滚到底部），`FileListItem2` 通过 `defineExpose` 暴露 `scrollToTop/scrollToBottom/snapshot`
-- 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图 / MP4/WebM 中间帧，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
+- 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图 / MP4、WebM 视频中间帧，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
 - 媒体缓存：阅读页图片与 MP4/WebM 视频写 IndexedDB，2GiB/2000 条统一 LRU；命中直接 objectURL，设置页可改容量/名额并清除（图片缓存与缩略图缓存互相独立）
 - 电子书：PDF / EPUB / MOBI 已按「模拟 zip 页清单」接入（书架入口、页列表、按页出图、页缩略图、进度 / 书签）；EPUB / MOBI 页图是包内原图透传，不占渲染槽、不落盘；azw3 与文字版 MOBI / 可重排 EPUB 回 415 文案
 - 安全：`/file`、`/view/*` 全部限制在书库根内
@@ -171,4 +171,5 @@
 - MOBI 只做固定版式 / 图片型：文字版、`azw3`（含 KF8-only）回 415；BMP 页缩略图靠 `pages.ts` 的 `decodeBmpRaw()`（sharp 不认 BMP，只解 24/32 位 BI_RGB，调色板 / RLE 的 BMP 缩略图仍 404）；文字版 / 多图页 EPUB 整本 415（可用 calibre 转图片型）
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - `rar` 仍被当普通文件处理（书架排序 / 过滤 / 搜索词已持久化，别再当待办）
+- 视频缩略图：书架与阅读页文件列表对 MP4 / WebM 走服务端 `ffmpeg` 截帧。优先用 `ffprobe` 读时长后截中间帧；ffprobe 缺失时回退第 1 秒，再失败回退第 0 帧。写入 `data/thumbs` 走统一缩略图缓存（视频缓存 id 带 `_v2`），AVI / MKV 不截。`ffmpeg` / `ffprobe` 是可选依赖，找不到时视频条目回退图标，不影响在线播放（见 README「视频缩略图依赖（可选）」）。
 - 超大图（几十 MB / 上亿像素）在浏览器里仍可能解不出来：曾做过「`/api/file?max=` + sharp 降采样 + 前端按像素自动切换」，实测用户那边大图依旧打不开，已整段撤回（`d163ade revert(reader): 撤掉超大图降采样`，`server/utils/largeImage.ts` 已删除）。要重做必须先拿到真实样张（本机三库最大只有 11.1MB / 8192×6144），别凭猜再动 `api.ts` 与 `PagedReader`。

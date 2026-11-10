@@ -53,10 +53,10 @@ import TapZoneEditor from "@/views/settings/tabs/TapZoneEditor.vue";
 const showEditor = ref(false);
 
 const videoPlayPositionOptions: { value: VideoPlayPositionType; label: string; description: string }[] = [
-    { value: "top-left", label: "左上", description: "按钮显示在视频画面左上角" },
+    { value: "bottom-right", label: "右下", description: "按钮显示在视频画面右下角" },
     { value: "bottom-left", label: "左下", description: "按钮显示在视频画面左下角" },
     { value: "top-right", label: "右上", description: "按钮显示在视频画面右上角" },
-    { value: "bottom-right", label: "右下", description: "按钮显示在视频画面右下角" },
+    { value: "top-left", label: "左上", description: "按钮显示在视频画面左上角" },
     { value: "center", label: "中间", description: "按钮显示在视频画面中央" }
 ];
 

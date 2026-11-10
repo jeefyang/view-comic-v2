@@ -16,7 +16,9 @@
                     webkit-playsinline
                     preload="metadata"
                     @loadedmetadata="onVideoLoadedMetadata"
+                    @loadeddata="onVideoSizeChanged"
                     @canplay="onVideoCanPlay"
+                    @resize="onVideoSizeChanged"
                     @play="onVideoPlay"
                     @pause="onVideoPause"
                     @error="onVideoError"
@@ -48,7 +50,9 @@
                 webkit-playsinline
                 preload="metadata"
                 @loadedmetadata="onVideoLoadedMetadata"
+                @loadeddata="onVideoSizeChanged"
                 @canplay="onVideoCanPlay"
+                @resize="onVideoSizeChanged"
                 @play="onVideoPlay"
                 @pause="onVideoPause"
                 @error="onVideoError"
@@ -344,6 +348,12 @@ const hasRealVideoSize = computed(() => {
 const pageSize = computed(() => {
     const raw = rawPageSize.value;
     if (isVideo.value && (!raw.width || !raw.height)) {
+        // 视频 metadata 回来前不知道真实比例。直接按可用视口占位，
+        // 这样 contain 会先把视频放在正确的位置，metadata 回来只做等比校正，
+        // 不会先按 16:9 缩成一条、再突然跳成铺满。
+        if (viewSize.width > 0 && viewSize.height > 0) {
+            return { width: viewSize.width, height: viewSize.height };
+        }
         return { width: 16, height: 9 };
     }
     return raw;
@@ -358,7 +368,8 @@ const isLandscape = computed(() => {
     return width > 0 && height > 0 && width > height;
 });
 
-const isSpread = computed(() => readerSettings.splitSpread && isLandscape.value);
+// 视频是单独一页，不参与双开页拆分；否则横屏视频会被拆成两半，rotate 还会被迫退化成 fit
+const isSpread = computed(() => !isVideo.value && readerSettings.splitSpread && isLandscape.value);
 
 /** 双开页要按「半页」的尺寸算 */
 const fitSize = computed(() => {
@@ -370,9 +381,12 @@ const fitSize = computed(() => {
 });
 
 const fit = computed(() => {
-    // rotate 与裁切互相打架，双开页时退化回 contain
+    const { width, height } = fitSize.value;
+    // rotate 与裁切互相打架，双开页时退化回 contain。
+    // 视频和图片共用同一套 contain 逻辑：旋转只改变朝向，不放大到裁边，
+    // 保证「刚好装进可用视口」，首次进入和切换适配方式结果一致。
     const mode = isSpread.value && readerSettings.fitMode === "rotate" ? "fit" : readerSettings.fitMode;
-    return computeFit(fitSize.value.width, fitSize.value.height, viewSize.width, viewSize.height, mode);
+    return computeFit(width, height, viewSize.width, viewSize.height, mode);
 });
 
 /** 双开页当前显示的是第几半：0 = 左半，1 = 右半 */
@@ -743,35 +757,53 @@ const toggleVideo = () => {
     void tryAutoPlay();
 };
 
+/** 视频的真实尺寸可能在 metadata / loadeddata / canplay 任一时机才就绪，每次都校正一遍 */
+const rememberVideoSize = (el: HTMLVideoElement) => {
+    if (el !== videoEl.value) {
+        return;
+    }
+    const current = page.value;
+    if (!current || el.videoWidth <= 0 || el.videoHeight <= 0) {
+        return;
+    }
+    const key = sizeKey(current);
+    const prev = sizeMap[key];
+    if (prev && prev.width === el.videoWidth && prev.height === el.videoHeight) {
+        return;
+    }
+    sizeMap[key] = { width: el.videoWidth, height: el.videoHeight };
+};
+
+const onVideoSizeChanged = (e: Event) => {
+    rememberVideoSize(e.target as HTMLVideoElement);
+};
+
 const onVideoLoadedMetadata = (e: Event) => {
     const el = e.target as HTMLVideoElement;
     if (el !== videoEl.value) {
         return;
     }
     markVideoReady();
-    const current = page.value;
-    if (current && el.videoWidth > 0 && el.videoHeight > 0) {
-        const key = sizeKey(current);
-        const prev = sizeMap[key];
-        if (!prev || prev.width !== el.videoWidth || prev.height !== el.videoHeight) {
-            sizeMap[key] = { width: el.videoWidth, height: el.videoHeight };
-        }
-    }
+    rememberVideoSize(el);
     void tryAutoPlay();
 };
 
 const onVideoCanPlay = (e: Event) => {
-    if (e.target !== videoEl.value) {
+    const el = e.target as HTMLVideoElement;
+    if (el !== videoEl.value) {
         return;
     }
+    rememberVideoSize(el);
     markVideoReady();
     void tryAutoPlay();
 };
 
 const onVideoPlay = (e: Event) => {
-    if (e.target !== videoEl.value) {
+    const el = e.target as HTMLVideoElement;
+    if (el !== videoEl.value) {
         return;
     }
+    rememberVideoSize(el);
     videoPlaying.value = true;
     // 首次完整缓冲并开始播放后才写缓存；循环播放不会重复写
     void mediaHandle?.commit();
@@ -947,7 +979,12 @@ onBeforeUnmount(() => {
 
 .page-img {
     display: block;
+    /* 旋转/宽度适应时布局盒可能比视口大，别被 flex 压缩或 UA 的 max 尺寸限制 */
+    flex: 0 0 auto;
+    max-width: none;
+    max-height: none;
     object-fit: contain;
+    transform-origin: center center;
     user-select: none;
     -webkit-user-drag: none;
     will-change: transform;
