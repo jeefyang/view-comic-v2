@@ -3,7 +3,7 @@
 > 状态：可交接（wayfinder 地图 [#13](https://github.com/jeefyang/view-comic-v2/issues/13) 的收口产物）
 > 决策来源：[优化清单与优先级](https://github.com/jeefyang/view-comic-v2/issues/14)、[视频页模型与混排](https://github.com/jeefyang/view-comic-v2/issues/15)、[视频传输与格式边界](https://github.com/jeefyang/view-comic-v2/issues/16)、[播放器交互（瀑布流/单页）](https://github.com/jeefyang/view-comic-v2/issues/17)、[媒体缓存范围与策略](https://github.com/jeefyang/view-comic-v2/issues/18)、[媒体缓存技术选型](https://github.com/jeefyang/view-comic-v2/issues/19)、[页图取数热路径](https://github.com/jeefyang/view-comic-v2/issues/20)、[大图浏览的剩余策略（路径修复后）](https://github.com/jeefyang/view-comic-v2/issues/21)、[缓存预算的图片预留与多用户边界](https://github.com/jeefyang/view-comic-v2/issues/23)
 > 调研底稿（在未合并的 research 分支上）：[video-playback.md](https://github.com/jeefyang/view-comic-v2/blob/67b6cf2/docs/research/video-playback.md)（分支 `research/video-playback`）、[media-cache.md](https://github.com/jeefyang/view-comic-v2/blob/3672895/docs/research/media-cache.md)（分支 `research/media-cache`）
-> 实现状态：单页视频播放、五位置播放按钮、旋转 contain、服务端中间帧视频缩略图已在 PR [#25](https://github.com/jeefyang/view-comic-v2/pull/25)（`5815614`，分支 `feat/video-paged-player`）实现，尚未合并；页图热路径（目录清单 LRU、越界 404、zip 图片 206 + 客户端限读）已合并到 main（PR [#27](https://github.com/jeefyang/view-comic-v2/pull/27)，`9c6b67e`）；瀑布流移动端修复已合并到 main（PR [#28](https://github.com/jeefyang/view-comic-v2/pull/28)）；有界媒体缓存已在分支 `feat/media-cache` 实现（IndexedDB + 统一 LRU），尚未合并。
+> 实现状态：单页视频播放、五位置播放按钮、旋转 contain、服务端中间帧视频缩略图已合并到 main（PR [#25](https://github.com/jeefyang/view-comic-v2/pull/25)）；页图热路径（目录清单 LRU、越界 404、zip 图片 206 + 客户端限读）已合并到 main（PR [#27](https://github.com/jeefyang/view-comic-v2/pull/27)，`9c6b67e`）；瀑布流移动端修复已合并到 main（PR [#28](https://github.com/jeefyang/view-comic-v2/pull/28)）；有界媒体缓存已合并到 main（PR [#29](https://github.com/jeefyang/view-comic-v2/pull/29)，IndexedDB + 统一 LRU）。
 > 本文只写决策、契约与验收，不写实现步骤；落地时遵循 `AGENTS.md` 与 `docs/project-memory.md` 的既有约定。容量单位按 1024 进制（2GiB = 2147483648 B，500MB = 524288000 B）。
 
 ## 1. 目标与非目标
@@ -35,8 +35,8 @@
 | --- | --- | --- | --- |
 | C1 | 目录书页清单服务端 LRU + 越界 404 | P0 | 已合并（PR #27） |
 | C2 | zip 图片尺寸探测真 206 + 客户端限读 | P0 | 已合并（PR #27） |
-| C5 | 视频原生格式、页模型、单页播放器、缩略图 | P0 | 已在 PR #25 实现（待合并）；本 spec 固化行为 |
-| C7 | 有界媒体缓存（图片 + 视频） | P0 | 已实现，待合并（`feat/media-cache`） |
+| C5 | 视频原生格式、页模型、单页播放器、缩略图 | P0 | 已合并（PR #25）；本 spec 固化行为 |
+| C7 | 有界媒体缓存（图片 + 视频） | P0 | 已合并（PR #29） |
 | C10 | 瀑布流移动端横向滚动条 + 禁止选中 | P0 | 已合并（PR #28） |
 | C3 | 页表尺寸从主 `view` 拆成紧凑 localStorage | P1 | 决策完成，待实现 |
 | C4 | 首屏/传输（静态 import、主包体积、compression） | P1 | 只定优先级，方案未决；不纳入本 spec 验收 |
@@ -44,7 +44,7 @@
 | C6 | 离线/整本下载 | Out | 不做 |
 | C8 | 代码健康 | Out | 本次不做 |
 
-落地顺序（不是新决策，只用于交接排期）：页图热路径的 404、zip 206、目录 LRU 已合并到 main（PR #27）；页表（P1）随后；瀑布流修复已合并（PR #28，Android Chrome 真机验证通过）；媒体缓存（C7）已在 `feat/media-cache` 落地：依赖的页身份与视频路径已稳定，实现为 `src/utils/mediaCache.ts` + `src/utils/mediaSource.ts`，接入瀑布流、单页、设置页与退出登录。视频单页播放器已在 PR #25 落地，不需要重做。
+落地顺序（不是新决策，只用于交接排期）：页图热路径的 404、zip 206、目录 LRU 已合并到 main（PR #27）；页表（P1）随后；瀑布流修复已合并（PR #28，Android Chrome 真机验证通过）；有界媒体缓存（C7）已合并到 main（PR #29）：依赖的页身份与视频路径已稳定，实现为 `src/utils/mediaCache.ts` + `src/utils/mediaSource.ts`，接入瀑布流、单页、设置页与退出登录。视频单页播放器已合并（PR #25），不需要重做。
 
 ## 3. 页图取数热路径
 
