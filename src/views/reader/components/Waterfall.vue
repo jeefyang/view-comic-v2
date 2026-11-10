@@ -668,7 +668,8 @@ const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
             setDisplayPage(sortPageList[start]);
         }, scrollDelay);
     });
-    // 只允许纵向滚动；横向统一裁掉，避免手机横滑时出现横向滚动条
+    // 只允许纵向滚动；页宽按 scrollDiv 的实际可用宽度缩放。
+    // 纵向滚动条由下面的 CSS 隐藏，避免它占宽把内容挤出横向滚动条。
     scrollDiv.style.overflowX = "hidden";
     scrollDiv.style.overflowY = "auto";
     scrollDiv.style.height = "100%";
@@ -680,8 +681,8 @@ const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
     scrollDiv.append(topDiv, contentDiv, bottomDiv);
     fragment.append(scrollDiv);
     main.append(fragment);
-    // 垂直滚动条占宽时，scrollDiv.clientWidth 会比 main.clientWidth 少。
-    // 首次排版用的是 main 的近似宽度，发现实际更窄就按 clientWidth 重排一次；
+    // 正常路径下滚动条已隐藏，clientWidth 就是完整可用宽度；
+    // 这里仍按实际 clientWidth 复核一次，兼容某些浏览器/自定义滚动条仍占宽的情况。
     // measuredWidth 已经传过时不再递归，避免循环。
     if (measuredWidth === undefined && scrollDiv.scrollHeight > scrollDiv.clientHeight) {
         const actualWidth = scrollDiv.clientWidth;
@@ -804,9 +805,17 @@ onBeforeUnmount(() => {
 /* scrollDiv 由脚本动态创建，scoped 样式要用 :deep 才能命中 */
 .main :deep(.scrollDiv) {
     overflow-x: hidden;
+    scrollbar-width: none;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
+}
+
+/* 隐藏纵向滚动条，但保留上下滚动；全局滚动条是 8px，会占掉可用宽度 */
+.main :deep(.scrollDiv)::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
 }
 
 /* 容器由脚本动态创建，scoped 样式要用 :deep 才能命中 */

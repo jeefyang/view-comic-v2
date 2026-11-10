@@ -297,13 +297,14 @@ mc:<schema>:<userScope>:<editUUID>:<basePath>:<kind>:<index>:<name>:<urlVersion>
 **决策**：
 
 - `scrollDiv` 设 `overflow-x: hidden`，只保留纵向滚动。
-- 在 DOM 内用 `scrollDiv.clientWidth` 计算 `screenWidth`，不再用 `main.clientWidth - padding` 的近似值。
+- 隐藏 `scrollDiv` 的纵向滚动条（Firefox `scrollbar-width: none`，WebKit `::-webkit-scrollbar`），仍可上下滚动；这样滚动条不占宽度，页宽按 `scrollDiv.clientWidth` 缩放，图片刚好不溢出。
+- 在 DOM 内用 `scrollDiv.clientWidth` 计算 `screenWidth`，不再用 `main.clientWidth - padding` 的近似值；若某些环境滚动条仍占宽，按实际 `clientWidth` 重排一次。
 - `.main` 与 `scrollDiv` 加 `user-select: none`、`-webkit-user-select: none`、`-webkit-touch-callout: none`。
 - 双开页/拆半屏的 2 倍宽渲染与裁切逻辑不变。
 
 **验收**（Android Chrome，360px 与 412px 宽）：
 
-- 纵向滚动时没有横向滚动条，页面不左右晃。
+- 纵向滚动时没有横向滚动条，页面不左右晃；纵向滚动条隐藏但上下滚动正常。
 - 长按图片/空白不出现文字选中菜单。
 - 单页与双开页宽度都贴合视口，右侧不裁切、不出现 8px 白边。
 - 滚动性能、图片加载、进度保存不退化。
