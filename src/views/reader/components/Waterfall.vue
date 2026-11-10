@@ -207,7 +207,7 @@ const removePage = (page: WaterfallPageType) => {
     }
 };
 
-const resetData = () => {
+const resetData = (measuredWidth?: number) => {
     topObserver?.disconnect();
     topObserver = undefined;
     bottomObserver?.disconnect();
@@ -234,7 +234,9 @@ const resetData = () => {
     displayPageList = [];
     lastEmitIndex = -1;
 
-    screenWidth = main.clientWidth - configStore.paddingLeft - configStore.paddingRight;
+    // 垂直滚动条会吃掉可用宽度。先用 main 的近似宽度排版，refresh 挂上 scrollDiv 后
+    // 再用真实的 clientWidth 复核；有滚动条时按实际宽度重排一次，避免右缘被裁。
+    screenWidth = measuredWidth ?? (main.clientWidth - configStore.paddingLeft - configStore.paddingRight);
     screenHeight = main.clientHeight - configStore.paddingTop - configStore.paddingBottom;
     // 还没显示过的页没有真实宽高。用整屏高度估算会让累加出的 scroll 偏小（漫画页通常比屏幕高），
     // 所以改用已知页的平均高度；一页都不知道时才退回整屏高度。
@@ -630,7 +632,7 @@ let scrollDelay = 300;
 let lastMainWidth = 0;
 let lastMainHeight = 0;
 
-const refresh = (jump: number, retry = 0) => {
+const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
     const main = mainRef.value;
 
     if (!main) {
@@ -646,7 +648,7 @@ const refresh = (jump: number, retry = 0) => {
     }
     lastMainWidth = main.clientWidth;
     lastMainHeight = main.clientHeight;
-    resetData();
+    resetData(measuredWidth);
     // 外部传进来的是「排序后第几张图」，排好的列表按「屏」算（双开页占两屏），这里换算一次
     let start = sortPageList.findIndex((item) => item.order === jump);
     if (start < 0) {
@@ -666,7 +668,9 @@ const refresh = (jump: number, retry = 0) => {
             setDisplayPage(sortPageList[start]);
         }, scrollDelay);
     });
-    scrollDiv.style.overflow = "auto";
+    // 只允许纵向滚动；横向统一裁掉，避免手机横滑时出现横向滚动条
+    scrollDiv.style.overflowX = "hidden";
+    scrollDiv.style.overflowY = "auto";
     scrollDiv.style.height = "100%";
     scrollDiv.style.width = "100%";
     scrollDiv.style.scrollbarWidth = "none";
@@ -676,6 +680,16 @@ const refresh = (jump: number, retry = 0) => {
     scrollDiv.append(topDiv, contentDiv, bottomDiv);
     fragment.append(scrollDiv);
     main.append(fragment);
+    // 垂直滚动条占宽时，scrollDiv.clientWidth 会比 main.clientWidth 少。
+    // 首次排版用的是 main 的近似宽度，发现实际更窄就按 clientWidth 重排一次；
+    // measuredWidth 已经传过时不再递归，避免循环。
+    if (measuredWidth === undefined && scrollDiv.scrollHeight > scrollDiv.clientHeight) {
+        const actualWidth = scrollDiv.clientWidth;
+        if (actualWidth > 0 && Math.abs(actualWidth - screenWidth) >= 1) {
+            refresh(jump, 0, actualWidth);
+            return;
+        }
+    }
     // 先渲染目标页，避免恢复进度时先闪一屏空白
     if (sortPageList[start]) {
         setDisplayPage(sortPageList[start]);
@@ -781,6 +795,18 @@ onBeforeUnmount(() => {
 .main {
     width: 100%;
     height: 100%;
+    /* 移动端长按图片不要选中文字/弹出系统菜单 */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* scrollDiv 由脚本动态创建，scoped 样式要用 :deep 才能命中 */
+.main :deep(.scrollDiv) {
+    overflow-x: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
 }
 
 /* 容器由脚本动态创建，scoped 样式要用 :deep 才能命中 */
