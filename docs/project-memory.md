@@ -54,6 +54,7 @@
 - 进度存 `readerProgress`（localStorage），key 为 `editUUID::basePath::fileName`，值同时记 `index` 与 `name`，排序变化后按 name 重定位
 - 单页模式（`modes/paged/PagedReader.vue`）的适配靠 `sizeMap`（真实宽高）+ `viewSize`（可用视口）喂给 `modes/fitStrategies.ts` 的 `computeFit()`。`sizeMap` 的键必须用**文件名**（`sizeKey()`，没有名字才退回 `index`）：用序号会在换排序后把上一张图的尺寸套到新图上，表现为「选了旋转适应却转错、图又小又歪」；`onImgLoad` 必须**每次都用 `naturalWidth/naturalHeight` 覆写**（不能写成「已有就跳过」，错值会永久固化）；换书（`comicFileList.basePath` 变化）时 `watch` 清空整张缓存。
 - `computeFit()` 在任一侧尺寸为 0 时返回 `identity`（1:1），会让「旋转 / 缩放」看起来完全失效；`PagedReader` 的 `fit` 因此在尺寸未知时返回 `null` 并由 CSS 兜底，等 `measure()` 拿到真实值再算，不要改回直连 `computeFit`。
+- 页表尺寸单独存 `view:sizes:<editUUID>:<basePath>:<baseFile.name>`（值 `[[name,w,h],…]`），`view` 本身只存结构；`view:sizes:lru` 保留最近 10 本，单本上限 20,000 条，旧数据首次加载自动迁移。瀑布流图片加载后写尺寸表（300ms 合并），`mergeCachedSize` 从尺寸表回填；`PagedReader` 的 `sizeMap` 仍是组件内缓存，不落盘。
 
 ### 图片地址
 统一走 `src/utils/fileUrl.ts` 的 `buildFileUrl(editUUID, index, basePath)`，不要手拼 `api/file/...`。

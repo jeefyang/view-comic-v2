@@ -384,21 +384,6 @@ const resetContentDiv = () => {
     return curContentDiv;
 };
 
-let saveTimer: ReturnType<typeof setTimeout> | undefined = undefined;
-/**
- * 每张图加载完都要把宽高写回 store。save() 是整份列表的 JSON.stringify，
- * 逐张直写会让首屏十几张图连续做十几次全量序列化，所以合并成一次写。
- */
-const saveDebounced = () => {
-    if (saveTimer) {
-        clearTimeout(saveTimer);
-    }
-    saveTimer = setTimeout(() => {
-        saveTimer = undefined;
-        viewStore.save();
-    }, 300);
-};
-
 /** 已排好的页里发现横图需要拆成两屏时，等图片加载稳定后重排一次 */
 let splitTimer: ReturnType<typeof setTimeout> | undefined = undefined;
 let splitIndex = -1;
@@ -434,7 +419,8 @@ const updatePage = (page: WaterfallPageType, width: number, height: number) => {
     page.divHeight = height * page.contentScale;
     page.displayHeight = page.divHeight + configStore.imageGap;
     page.displayWidth = screenWidth;
-    saveDebounced();
+    // 只写独立尺寸表；view 里的 comicFileList 不再持久化逐页宽高
+    viewStore.setPageSize(page.name, width, height);
 };
 
 const createContentDiv = (page: WaterfallPageType) => {
@@ -942,11 +928,7 @@ onBeforeUnmount(() => {
         splitTimer = undefined;
     }
     // 防抖窗口内离开时把最后一次尺寸写入落盘，避免丢缓存
-    if (saveTimer) {
-        clearTimeout(saveTimer);
-        saveTimer = undefined;
-        viewStore.save();
-    }
+    viewStore.flushPageSizes();
 });
 </script>
 <style lang="css" scoped>

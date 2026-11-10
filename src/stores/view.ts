@@ -4,6 +4,12 @@ import { libraryFetch, viewFetch } from '@/utils/jFetch';
 import type { ResSendType } from '@common/apis/tools/apiUrlsTrans';
 import { normalizeBasePath, normalizeFileName } from '@/utils/fileUrl';
 import { sortFileList } from '@common/utils/nameSort';
+import {
+    flushPageSizes as flushPageSizeCache,
+    getPageSizes,
+    migrateLegacyPageSizes,
+    setPageSize as setPageSizeCache
+} from '@/utils/pageSizes';
 
 /**
  * 书架列表项：`thumbPath` 在生成列表那一刻就固定下来。
@@ -48,10 +54,26 @@ export const useViewStore = defineStore('view', () => {
         , shelfIncludeType, shelfScrollName, comicFileList, shelfLibraryUUID
     };
 
+    /** view 只持久化结构；逐页宽高存在 view:sizes:* 的独立尺寸表里 */
+    const stripPageSizes = (list: ComicFileListType | undefined): ComicFileListType | undefined => {
+        if (!list?.list?.length) return list;
+        let changed = false;
+        const pages = list.list.map((item) => {
+            if (item.width === undefined && item.height === undefined) return item;
+            changed = true;
+            const copy: ComicFileType = { ...item };
+            delete copy.width;
+            delete copy.height;
+            return copy;
+        });
+        return changed ? { ...list, list: pages } : list;
+    };
+
     const save = () => {
         const obj: any = {};
         for (let key in returnData) {
-            obj[key] = returnData[key].value;
+            const value = (returnData as any)[key].value;
+            obj[key] = key === "comicFileList" ? stripPageSizes(value) : value;
         }
         localStorage.setItem(saveKey, JSON.stringify(obj));
     };
@@ -65,6 +87,10 @@ export const useViewStore = defineStore('view', () => {
                     returnData[key].value = obj[key];
                 }
 
+            }
+            // 旧版把每页宽高存在 comicFileList 里，首次加载搬到尺寸表后重写一次 view
+            if (migrateLegacyPageSizes(curLibrary.value?.editUUID, comicFileList.value)) {
+                save();
             }
         }
     };
@@ -199,26 +225,17 @@ export const useViewStore = defineStore('view', () => {
 
     /**
      * 服务端返回的 comicViewList 不含图片宽高（只有 name/size/index）。
-     * 宽高是 reader 里图片加载后按需写进 store 并持久化的，用于计算每页占位高度和阅读进度定位。
-     * 重新拉取同一个列表时必须按文件名把已缓存的宽高合并回来，否则占位高度会退回按屏幕估算，
-     * 导致刷新后跳回的位置偏移。换了书（basePath 或 baseFile 不同）则不合并。
+     * 宽高是 reader 里图片加载后按需写进独立尺寸表并持久化的，用于计算每页占位高度和阅读进度定位。
+     * 重新拉取同一个列表时必须按文件名把尺寸表里的宽高合并回来，否则占位高度会退回按屏幕估算，
+     * 导致刷新后跳回的位置偏移。尺寸表的键包含书身份，换书不会串号。
      */
-    const mergeCachedSize = (oldList: Partial<ComicFileListType> | undefined, nextList: ComicFileListType) => {
-        const oldItems = oldList?.list;
-        if (!oldItems?.length || !nextList?.list?.length) return nextList;
-        if (oldList?.basePath !== nextList.basePath) return nextList;
-        if (oldList?.baseFile?.name !== nextList.baseFile?.name) return nextList;
-
-        const sizeMap = new Map<string, ComicFileType>();
-        for (const item of oldItems) {
-            if (item.width && item.height) sizeMap.set(item.name, item);
-        }
-        if (!sizeMap.size) return nextList;
-
+    const mergeCachedSize = (nextList: ComicFileListType, sizes: Map<string, { width: number; height: number }>) => {
+        if (!sizes.size || !nextList?.list?.length) return nextList;
         nextList.list = nextList.list.map((item) => {
-            const prev = sizeMap.get(item.name);
-            if (!prev) return item;
-            return { ...item, width: prev.width, height: prev.height };
+            const size = sizes.get(item.name);
+            if (!size) return item;
+            if (item.width === size.width && item.height === size.height) return item;
+            return { ...item, width: size.width, height: size.height };
         });
         return nextList;
     };
@@ -235,10 +252,19 @@ export const useViewStore = defineStore('view', () => {
         if (data.baseFile) {
             data.baseFile = { ...data.baseFile, name: normalizeFileName(data.baseFile.name) };
         }
-        const merged = mergeCachedSize(comicFileList.value, data);
+        const sizes = getPageSizes(curLibrary.value.editUUID!, data.basePath, data.baseFile?.name);
+        const merged = mergeCachedSize(data, sizes);
         comicFileList.value = merged;
         save()
         return res;
+    };
+
+    /** 记录当前书某一页的真实宽高；实际写入合并到尺寸表，避免整份 view 反复序列化 */
+    const setPageSize = (name: string, width: number, height: number) => {
+        const list = comicFileList.value;
+        const editUUID = curLibrary.value.editUUID;
+        if (!editUUID || !list?.baseFile || !name) return;
+        setPageSizeCache(editUUID, list.basePath, list.baseFile.name, name, width, height);
     };
 
     /**
@@ -281,6 +307,8 @@ export const useViewStore = defineStore('view', () => {
         updateLibrary, removeLibrary,
         updateComicViewList,
         reloadComicViewList,
+        setPageSize,
+        flushPageSizes: flushPageSizeCache,
         pendingOpenName
     };
 });
