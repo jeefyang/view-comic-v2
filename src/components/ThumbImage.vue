@@ -142,6 +142,13 @@ async function load() {
             }, delay);
             return;
         }
+        if (response.status === 404) {
+            // 404 只是“这张图没有缩略图”（pdf/epub/mobi 目录、空目录、取不到封面等），
+            // 属于正常结果，不刷控制台；5xx 等异常才需要告警。
+            failedKeys.add(key);
+            failed.value = true;
+            return;
+        }
         if (!response.ok) {
             failedKeys.add(key);
             failed.value = true;
