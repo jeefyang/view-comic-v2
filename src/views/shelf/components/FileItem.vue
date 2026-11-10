@@ -2,7 +2,7 @@
     <n-card content-style="padding: 0.5rem;" @click="emits('click', props.item)">
         <n-flex align="center" style="height: 100%">
             <div class="thumb-box">
-                <!-- 文件夹 / 图片 / 压缩包用缩略图；视频与其它类型先留图标 -->
+                <!-- 文件夹 / 图片 / 压缩包 / 电子书 / 视频用缩略图；其它类型留图标 -->
                 <thumb-image v-if="thumbPath" :edit-uuid="editUUID" :path="thumbPath" :alt="props.item.name">
                     <n-icon :color="iconColor" size="40">
                         <component :is="icon" />
