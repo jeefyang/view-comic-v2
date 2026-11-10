@@ -17,6 +17,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { config as loadEnv } from "dotenv";
 import express, { type Express } from "express";
+import compression from "compression";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -63,14 +64,21 @@ if (!fs.existsSync(indexHtml)) {
 
 const { viteNodeApp: app } = (await import(pathToFileURL(serverEntry).href)) as { viteNodeApp: Express };
 
+// 静态文本资源走 gzip；必须挂在 /api 路由之后，避免压缩图片/视频流。
+// compression 默认按 Content-Type 判断，图片/视频/字体本身已压缩，不会被二次压缩。
+app.use(compression({ threshold: 1024 }));
+
 // 前端静态资源：/api 已在 app 内部注册，这里只兜其余请求
 app.use(
     express.static(distDir, {
         index: "index.html",
         // 带 hash 的资源可以长缓存；index.html 不吃缓存，避免更新后拿到旧的
         setHeaders: (res, filePath) => {
-            if (filePath.endsWith("index.html")) {
+            const normalized = filePath.replace(/\\/g, "/");
+            if (normalized.endsWith("/index.html")) {
                 res.setHeader("Cache-Control", "no-cache");
+            } else if (normalized.includes("/assets/")) {
+                res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
             }
         }
     })

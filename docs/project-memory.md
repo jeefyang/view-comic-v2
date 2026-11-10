@@ -30,6 +30,7 @@
 - **只跑 `build-only` 会连 `dist/server` 一起清掉**：`vite build` 默认 `emptyOutDir: true`，`build-only` 之后 `dist/server/{index.js,prod.mjs}` 就没了，这时重启 PM2 只会得到 `Cannot find module '...\dist\server\prod.mjs'` 并进入崩溃-重启循环（`pm2` 的 `↺` 会一路涨）。要改前端又不想整包重建，也必须跑**完整**的 `pnpm build`，然后再 `pm2 restart view-comic-v2`。
 - PM2 操作：`pm2 list` / `pm2 restart view-comic-v2` / `pm2 logs` 可直接用（早期在沙箱里会 `connect EPERM //./pipe/rpc.sock`，现在正常）。运行日志在 `logs/out-0.log` 与 `logs/error-0.log`——缩略图的 `warnOnce` 排障日志只会出现在后者里。
 - 打包（`vite build` / `vite build --ssr`）在本机需要在沙箱外跑：esbuild 起子进程会 `spawn EPERM`。飞牛（Debian，glibc ≥ 2.36）上 `sharp` 有预编译包，但**原生模块不能跨平台拷**，必须在目标机 `pnpm install`。
+- 生产静态资源：`server/prod.ts` 在 `/api` 路由之后、`express.static` 之前挂 `compression({ threshold: 1024 })`，只压文本型资源；`/assets/` 下带 hash 的 JS/CSS/字体设 `public, max-age=31536000, immutable`，`index.html` 仍 `no-cache`。前端除 `LibraryView` 外的路由都动态 `import`，首屏不加载阅读器/书架 chunk；入口不再引入未使用的 FiraCode（naive 的 `v-sans` 仍用 Lato）。
 
 ## 目录
 

@@ -1,11 +1,14 @@
 // src/router/index.ts
 import { createRouter, createWebHashHistory, type RouteRecordRaw } from 'vue-router';
 import LibraryView from '@/views/library/libraryView.vue';
-import ShelfView from "@/views/shelf/shelfView.vue";
-import SettingsView from '@/views/settings/settingsView.vue';
-import HistoryView from '@/views/history/historyView.vue';
-import ReaderView from '@/views/reader/readerView.vue';
 import { useConfigStore } from '@/stores/config';
+
+// 首屏只加载书库页；其余页面按路由懒加载，避免阅读器/瀑布流/书架虚拟列表
+// 全部挤进入口包。Vite 会自动为这些动态 import 生成独立 chunk。
+const ShelfView = () => import("@/views/shelf/shelfView.vue");
+const SettingsView = () => import('@/views/settings/settingsView.vue');
+const HistoryView = () => import('@/views/history/historyView.vue');
+const ReaderView = () => import('@/views/reader/readerView.vue');
 
 const routes: RouteRecordRaw[] = [
     { path: '/', redirect: '/library' },
