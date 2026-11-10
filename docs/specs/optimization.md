@@ -3,7 +3,7 @@
 > 状态：可交接（wayfinder 地图 [#13](https://github.com/jeefyang/view-comic-v2/issues/13) 的收口产物）
 > 决策来源：[优化清单与优先级](https://github.com/jeefyang/view-comic-v2/issues/14)、[视频页模型与混排](https://github.com/jeefyang/view-comic-v2/issues/15)、[视频传输与格式边界](https://github.com/jeefyang/view-comic-v2/issues/16)、[播放器交互（瀑布流/单页）](https://github.com/jeefyang/view-comic-v2/issues/17)、[媒体缓存范围与策略](https://github.com/jeefyang/view-comic-v2/issues/18)、[媒体缓存技术选型](https://github.com/jeefyang/view-comic-v2/issues/19)、[页图取数热路径](https://github.com/jeefyang/view-comic-v2/issues/20)、[大图浏览的剩余策略（路径修复后）](https://github.com/jeefyang/view-comic-v2/issues/21)、[缓存预算的图片预留与多用户边界](https://github.com/jeefyang/view-comic-v2/issues/23)
 > 调研底稿（在未合并的 research 分支上）：[video-playback.md](https://github.com/jeefyang/view-comic-v2/blob/67b6cf2/docs/research/video-playback.md)（分支 `research/video-playback`）、[media-cache.md](https://github.com/jeefyang/view-comic-v2/blob/3672895/docs/research/media-cache.md)（分支 `research/media-cache`）
-> 实现状态：单页视频播放、五位置播放按钮、旋转 contain、服务端中间帧视频缩略图已合并到 main（PR [#25](https://github.com/jeefyang/view-comic-v2/pull/25)）；页图热路径（目录清单 LRU、越界 404、zip 图片 206 + 客户端限读）已合并到 main（PR [#27](https://github.com/jeefyang/view-comic-v2/pull/27)，`9c6b67e`）；瀑布流移动端修复已合并到 main（PR [#28](https://github.com/jeefyang/view-comic-v2/pull/28)）；有界媒体缓存已合并到 main（PR [#29](https://github.com/jeefyang/view-comic-v2/pull/29)，IndexedDB + 统一 LRU）；页表尺寸拆分已合并到 main（PR [#31](https://github.com/jeefyang/view-comic-v2/pull/31)）。
+> 实现状态：单页视频播放、五位置播放按钮、旋转 contain、服务端中间帧视频缩略图已合并到 main（PR [#25](https://github.com/jeefyang/view-comic-v2/pull/25)）；页图热路径（目录清单 LRU、越界 404、zip 图片 206 + 客户端限读）已合并到 main（PR [#27](https://github.com/jeefyang/view-comic-v2/pull/27)，`9c6b67e`）；瀑布流移动端修复已合并到 main（PR [#28](https://github.com/jeefyang/view-comic-v2/pull/28)）；有界媒体缓存已合并到 main（PR [#29](https://github.com/jeefyang/view-comic-v2/pull/29)，IndexedDB + 统一 LRU）；页表尺寸拆分已合并到 main（PR [#31](https://github.com/jeefyang/view-comic-v2/pull/31)）；首屏/传输（路由懒加载、gzip、静态长缓存）已在 `feat/c4-first-load` 实现，待合并。
 > 本文只写决策、契约与验收，不写实现步骤；落地时遵循 `AGENTS.md` 与 `docs/project-memory.md` 的既有约定。容量单位按 1024 进制（2GiB = 2147483648 B，500MB = 524288000 B）。
 
 ## 1. 目标与非目标
@@ -39,12 +39,12 @@
 | C7 | 有界媒体缓存（图片 + 视频） | P0 | 已合并（PR #29） |
 | C10 | 瀑布流移动端横向滚动条 + 禁止选中 | P0 | 已合并（PR #28） |
 | C3 | 页表尺寸从主 `view` 拆成紧凑 localStorage | P1 | 已合并（PR #31） |
-| C4 | 首屏/传输（静态 import、主包体积、compression） | P1 | 只定优先级，方案未决；不纳入本 spec 验收 |
+| C4 | 首屏/传输（路由懒加载、gzip、静态长缓存） | P1 | 已实现，待合并（feat/c4-first-load） |
 | C9 | 大图浏览 | 验证项 | 已由 4250d35 修复；本次不改代码 |
 | C6 | 离线/整本下载 | Out | 不做 |
 | C8 | 代码健康 | Out | 本次不做 |
 
-落地顺序（不是新决策，只用于交接排期）：页图热路径的 404、zip 206、目录 LRU 已合并到 main（PR #27）；页表（P1）已合并（PR #31）；瀑布流修复已合并（PR #28，Android Chrome 真机验证通过）；有界媒体缓存（C7）已合并到 main（PR #29）：依赖的页身份与视频路径已稳定，实现为 `src/utils/mediaCache.ts` + `src/utils/mediaSource.ts`，接入瀑布流、单页、设置页与退出登录。视频单页播放器已合并（PR #25），不需要重做。
+落地顺序（不是新决策，只用于交接排期）：页图热路径的 404、zip 206、目录 LRU 已合并到 main（PR #27）；页表（P1）已合并（PR #31）；瀑布流修复已合并（PR #28，Android Chrome 真机验证通过）；有界媒体缓存（C7）已合并到 main（PR #29）：依赖的页身份与视频路径已稳定，实现为 `src/utils/mediaCache.ts` + `src/utils/mediaSource.ts`，接入瀑布流、单页、设置页与退出登录。视频单页播放器已合并（PR #25），不需要重做。首屏/传输（C4）已在 `feat/c4-first-load` 落地：`src/router/index.ts` 路由懒加载 + `server/prod.ts` gzip/静态长缓存。
 
 ## 3. 页图取数热路径
 
@@ -317,16 +317,36 @@ mc:<schema>:<userScope>:<editUUID>:<basePath>:<kind>:<index>:<name>:<urlVersion>
 - 若后续再出现“糊 / 解不出 / 内存峰值 / 首屏慢”，必须带真实样张（路径、尺寸、大小、格式）、设备与 Chrome 版本、所在模式重新起票；不凭猜改 `api.ts` / `PagedReader`。
 - 接受：超大图仍受浏览器解码能力限制；这是已知边界，不是本轮优化目标。
 
-## 8. 首屏/传输（P1，未展开）
+## 8. 首屏/传输（P1，已定）
 
-已记录的现状（来自“优化清单与优先级”）：
+### 8.1 改动前实测
 
-- 四个页面路由静态 import（`src/router/index.ts:3`）；
-- 主 JS 约 750KB 未压缩；
-- `express.static` 与 server 没有 compression（`server/prod.ts:67-68`、`server/index.ts:36`）；
-- 字体 Lato / FiraCode 在主入口引入。
+- 四个页面路由静态 import（`src/router/index.ts`），阅读页、书架、设置、历史的代码全部进入入口包。
+- 入口 JS 786.70 KB（gzip 241.30 KB），CSS 21.69 KB（gzip 4.87 KB），构建器警告超过 500 KB。
+- Lato 88.12 KB；FiraCode 114.46 KB。
+- 生产端没有 compression：浏览器实际收到未压缩的入口 JS。
+- `express.static` 只给 `index.html` 设了 `no-cache`，`/assets/` 带 hash 的资源没有 `immutable` 长缓存。
 
-**状态**：只定了 P1 优先级，没有决定具体方案；本 spec 不把它写成验收项，也不替用户拍板。排期时另起票评估路由懒加载、构建拆包、compression 等候选。它不影响 §3–§6 的验收。
+### 8.2 决策
+
+- `LibraryView` 保持静态入口；`ShelfView` / `SettingsView` / `HistoryView` / `ReaderView` 改为动态 `import`，由 Vite 生成按需 chunk。
+- 生产启动器 `server/prod.ts` 在 `/api` 路由之后、`express.static` 之前挂 `compression({ threshold: 1024 })`；只压缩静态文本资源，不压 `/api/file` 的图片/视频流。
+- `dist/assets/` 下带 hash 的文件设 `Cache-Control: public, max-age=31536000, immutable`；`index.html` 继续 `no-cache`。
+- 删除 `src/main.ts` 里未使用的 FiraCode 入口；保留 Lato（naive-ui 的 `v-sans` 使用）。
+- 本轮不做手工 `manualChunks`：它不减少首屏字节，只改善跨版本缓存，且会增加请求数；若改后主包仍偏大，另起票评估。
+
+### 8.3 验收
+
+- 首屏请求不包含 `ReaderView` / `Waterfall` / `PagedReader` / `ShelfView` / `SettingsView` / `HistoryView` 的代码；进入对应路由时才加载 chunk。
+- 入口 JS 小于改动前 786.70 KB（以 `pnpm build` 输出记录为准）；不设硬性 KB 目标，避免 naive-ui 共享 chunk 波动。
+- `curl -H 'Accept-Encoding: gzip' -I /assets/index-*.js` 返回 `Content-Encoding: gzip`、`Vary: Accept-Encoding`、`immutable` 长缓存；`/index.html` 返回 `no-cache`。
+- `/api/file` 图片 Range 仍为真 206，且不被 gzip。
+- 书库 → 书架 → 阅读页切换正常；keep-alive、书架滚动位置、阅读进度不变；Android Chrome 无控制台错误。
+
+### 8.4 明确不做
+
+- 不做 brotli 预压缩、CDN、Service Worker。
+- 不改 `server/index.ts` 的 API 路由，不改 `/api/file` 的 Range 语义。
 
 ## 9. 风险与取舍
 

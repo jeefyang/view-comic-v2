@@ -9,10 +9,8 @@ import App from './App.vue';
 import router from './router';
 import Vue3TouchEvents from "vue3-touch-events";
 
-// 通用字体
+// 通用字体：naive-ui 的 v-sans 使用 Lato；项目没有使用 v-mono，不再引入 FiraCode
 import 'vfonts/Lato.css';
-// 等宽字体
-import 'vfonts/FiraCode.css';
 import "virtual:uno.css";
 
 // import { initDebug } from "./myDebug";
