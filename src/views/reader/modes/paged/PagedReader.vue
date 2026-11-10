@@ -3,7 +3,7 @@
         <div class="page-box">
             <div v-if="page && pageUrl && isSpread" :key="`${pageUrl}-spread`" class="spread-box" :style="spreadBoxStyle">
                 <video
-                    v-if="isVideo"
+                    v-if="isVideo && displayUrl"
                     :key="`${displayUrl}-${half}-video`"
                     ref="videoEl"
                     :src="displayUrl"
@@ -24,7 +24,7 @@
                     @error="onVideoError"
                 ></video>
                 <img
-                    v-else
+                    v-else-if="!isVideo && displayUrl"
                     :src="displayUrl"
                     class="page-img spread-img"
                     :class="{ 'is-loading': loading }"
@@ -37,7 +37,7 @@
                 />
             </div>
             <video
-                v-else-if="page && pageUrl && isVideo"
+                v-else-if="page && pageUrl && displayUrl && isVideo"
                 :key="`${displayUrl}-${half}-video`"
                 ref="videoEl"
                 :src="displayUrl"
@@ -58,7 +58,7 @@
                 @error="onVideoError"
             ></video>
             <img
-                v-else-if="page && pageUrl"
+                v-else-if="page && pageUrl && displayUrl"
                 :key="pageUrl"
                 :src="displayUrl"
                 class="page-img"
@@ -70,7 +70,7 @@
                 @load="onImgLoad"
                 @error="onImgError"
             />
-            <div v-else class="page-empty">没有可显示的页面</div>
+            <div v-else-if="!page || !pageUrl" class="page-empty">没有可显示的页面</div>
             <page-loading
                 v-if="page && pageUrl && (loading || failed)"
                 :slow="slow"
@@ -103,6 +103,8 @@ import type { ReaderModeHandle } from "@/views/reader/modes/types";
 import { computeFit } from "@/views/reader/modes/fitStrategies";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
+import { buildMediaKey, deleteMedia, hasMedia, setMediaPinned } from "@/utils/mediaCache";
+import { openMedia, type MediaSourceHandle } from "@/utils/mediaSource";
 import { slowNetwork } from "@/utils/network";
 import { loadTapZones, tapZones } from "@/views/reader/tapZones/useTapZones";
 import type { TapActionKey } from "@/views/reader/tapZones/actions";
@@ -178,13 +180,97 @@ let attempt = 0;
 let hintTimer: ReturnType<typeof setTimeout> | undefined;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
-const displayUrl = computed(() => {
+/** 实际请求地址：重试时带 token，避免浏览器复用失败结果 */
+const requestUrl = computed(() => {
     const base = pageUrl.value;
     if (!base || !retryToken.value) {
         return base;
     }
     return `${base}${base.includes("?") ? "&" : "?"}retry=${retryToken.value}`;
 });
+
+/** 真正交给 img/video 的地址：缓存命中时是 objectURL */
+const displayUrl = ref("");
+
+const mediaKeyFor = (target: typeof page.value) => {
+    const editUUID = viewStore.curLibrary?.editUUID;
+    if (!target || !editUUID || !configStore.userUUID) {
+        return "";
+    }
+    return buildMediaKey({
+        userScope: configStore.userUUID,
+        editUUID,
+        basePath: viewStore.comicFileList?.basePath ?? "",
+        kind: target.extType === "video" ? "video" : "image",
+        index: target.index,
+        name: target.name
+    });
+};
+
+const pageMediaKey = computed(() => mediaKeyFor(page.value));
+
+let mediaHandle: MediaSourceHandle | undefined;
+let currentMediaKey = "";
+let mediaGeneration = 0;
+const mediaFromCache = ref(false);
+let mediaFallback = false;
+
+const releaseMediaHandle = () => {
+    if (currentMediaKey) {
+        setMediaPinned(currentMediaKey, false);
+    }
+    // 先停止并卸载 <video>，再吊销 objectURL；否则播放中的元素还持有已吊销的地址
+    const el = videoEl.value;
+    if (el) {
+        el.pause();
+        if (el.getAttribute("src")) {
+            el.removeAttribute("src");
+            el.load();
+        }
+    }
+    mediaHandle?.release();
+    mediaHandle = undefined;
+    currentMediaKey = "";
+    mediaFromCache.value = false;
+    mediaFallback = false;
+    displayUrl.value = "";
+};
+
+/**
+ * 取当前页的媒体源：命中缓存直接给 objectURL；未命中回网络。
+ * 图片保留渐进式加载，视频会先整段取回 Blob 再播放（首版不做 seek）。
+ */
+const loadPageMedia = async (forceNetwork = false) => {
+    const generation = ++mediaGeneration;
+    const url = requestUrl.value;
+    const key = pageMediaKey.value;
+    releaseMediaHandle();
+    if (!url) {
+        return;
+    }
+    try {
+        const handle = await openMedia(url, key, isVideo.value ? "video" : "image", {
+            userScope: configStore.userUUID,
+            forceNetwork
+        });
+        if (generation !== mediaGeneration) {
+            handle.release();
+            return;
+        }
+        mediaHandle = handle;
+        currentMediaKey = key;
+        mediaFromCache.value = handle.fromCache;
+        displayUrl.value = handle.src;
+        if (key) {
+            setMediaPinned(key, true);
+        }
+    } catch {
+        if (generation !== mediaGeneration) {
+            return;
+        }
+        displayUrl.value = url;
+    }
+};
 
 const loadText = computed(() => (retrying.value ? "加载失败，正在重试…" : ""));
 
@@ -223,6 +309,9 @@ const resetLoadState = () => {
 const onRetry = () => {
     if (!pageUrl.value) {
         return;
+    }
+    if (isVideo.value) {
+        pauseVideo();
     }
     failed.value = false;
     loading.value = true;
@@ -387,7 +476,7 @@ const MAX_PRELOAD = 5;
 /** 慢网时只预热前后各一张，别跟当前页抢带宽 */
 const maxPreload = () => (slowNetwork.value ? 2 : MAX_PRELOAD);
 
-const ensureSize = (target: typeof page.value) => {
+const ensureSize = async (target: typeof page.value) => {
     // 视频的尺寸来自 loadedmetadata，不能用图片的 Range + imageSize 探测
     if (!target || target.extType === "video") {
         return;
@@ -404,11 +493,15 @@ const ensureSize = (target: typeof page.value) => {
     if (!url) {
         return;
     }
-    void decodeSize(url).then(([size]) => {
-        if (size) {
-            sizeMap[key] = size;
-        }
-    });
+    // 已缓存的原图不必再发尺寸探测请求
+    const cacheKey = mediaKeyFor(target);
+    if (cacheKey && await hasMedia(cacheKey)) {
+        return;
+    }
+    const [size] = await decodeSize(url);
+    if (size) {
+        sizeMap[key] = size;
+    }
 };
 
 const releasePreloaded = () => {
@@ -423,7 +516,7 @@ const releasePreloaded = () => {
     preloaded.delete(first.value);
 };
 
-const preloadNearby = () => {
+const preloadNearby = async () => {
     const targets = [index.value - 1, index.value + 1].filter(i => i >= 0 && i < total.value);
     for (const i of targets) {
         const target = list.value[i];
@@ -434,11 +527,16 @@ const preloadNearby = () => {
         if (!url || preloaded.has(url)) {
             continue;
         }
+        // 已缓存的页直接用缓存，不再为预取发一次原图请求
+        const cacheKey = mediaKeyFor(target);
+        if (cacheKey && await hasMedia(cacheKey)) {
+            continue;
+        }
         const img = new Image();
         img.decoding = "async";
         img.src = url;
         preloaded.set(url, img);
-        ensureSize(target);
+        void ensureSize(target);
         while (preloaded.size > maxPreload()) {
             releasePreloaded();
         }
@@ -502,8 +600,8 @@ watch(
     index,
     () => {
         emit("update:current", index.value);
-        ensureSize(page.value);
-        preloadNearby();
+        void ensureSize(page.value);
+        void preloadNearby();
     },
     { immediate: true }
 );
@@ -530,6 +628,9 @@ const onZoneAction = (zone: TapZone) => {
 
 const onImgLoad = (e: Event) => {
     const el = e.target as HTMLImageElement;
+    if (el.getAttribute("src") !== displayUrl.value) {
+        return;
+    }
     clearLoadTimers();
     loading.value = false;
     failed.value = false;
@@ -547,9 +648,27 @@ const onImgLoad = (e: Event) => {
             sizeMap[key] = { width: el.naturalWidth, height: el.naturalHeight };
         }
     }
+    // 图片真正显示后才写缓存；缓存命中时 commit 是 no-op
+    void mediaHandle?.commit(requestUrl.value);
 };
 
-const onImgError = () => {
+const onImgError = (e?: Event) => {
+    // 换页后旧图片迟到的 error 不能影响当前页；视频回退调用时没有 event
+    const el = e?.target as HTMLImageElement | undefined;
+    if (el && el.getAttribute("src") !== displayUrl.value) {
+        return;
+    }
+    // 缓存条目损坏：删掉它，改走网络重载一次
+    if (mediaFromCache.value && currentMediaKey && !mediaFallback) {
+        mediaFallback = true;
+        retrying.value = true;
+        // 先等缓存条目删掉再重载，避免新的读取又命中同一条坏数据
+        void (async () => {
+            await deleteMedia(currentMediaKey);
+            retryToken.value = Date.now();
+        })();
+        return;
+    }
     if (attempt < RETRY_DELAYS.length) {
         const delay = RETRY_DELAYS[attempt]!;
         attempt += 1;
@@ -686,6 +805,8 @@ const onVideoPlay = (e: Event) => {
     }
     rememberVideoSize(el);
     videoPlaying.value = true;
+    // 首次完整缓冲并开始播放后才写缓存；循环播放不会重复写
+    void mediaHandle?.commit();
 };
 
 const onVideoPause = (e: Event) => {
@@ -700,6 +821,17 @@ const onVideoError = (e: Event) => {
     if (e.target !== videoEl.value) {
         return;
     }
+    // 缓存的视频条目损坏：删掉后从网络重载
+    if (mediaFromCache.value && currentMediaKey && !mediaFallback) {
+        mediaFallback = true;
+        pauseVideo();
+        // 先等缓存条目删掉再重载，避免新的读取又命中同一条坏数据
+        void (async () => {
+            await deleteMedia(currentMediaKey);
+            retryToken.value = Date.now();
+        })();
+        return;
+    }
     onImgError();
 };
 
@@ -710,12 +842,20 @@ watch(
         pauseVideo();
         videoUserPaused.value = false;
         resetLoadState();
+        void loadPageMedia();
         if (isVideo.value) {
             void nextTick(() => tryAutoPlay());
         }
     },
     { immediate: true }
 );
+
+// 重试/缓存损坏回退时换一个 token 重新取源
+watch(retryToken, (value) => {
+    if (value) {
+        void loadPageMedia();
+    }
+});
 
 // 双开页换半屏时 video 按 key 重建，重新从头播
 watch(half, () => {
@@ -785,14 +925,22 @@ onMounted(() => {
 onActivated(() => {
     measure();
     window.addEventListener("keydown", onKeydown);
+    if (currentMediaKey) {
+        setMediaPinned(currentMediaKey, true);
+    }
     if (isVideo.value) {
         void nextTick(() => tryAutoPlay());
+    } else if (!displayUrl.value) {
+        void loadPageMedia();
     }
 });
 
 onDeactivated(() => {
     window.removeEventListener("keydown", onKeydown);
     pauseVideo();
+    if (currentMediaKey) {
+        setMediaPinned(currentMediaKey, false);
+    }
 });
 
 onBeforeUnmount(() => {
@@ -800,6 +948,7 @@ onBeforeUnmount(() => {
     resizeObserver = undefined;
     clearLoadTimers();
     pauseVideo();
+    releaseMediaHandle();
     window.removeEventListener("keydown", onKeydown);
     for (const img of preloaded.values()) {
         img.src = "";

@@ -84,6 +84,7 @@ import {
     updateHistoryPage,
 } from "@/views/history/historyData";
 import { normalizeBasePath } from "@/utils/fileUrl";
+import { setMediaCacheErrorHandler } from "@/utils/mediaCache";
 import { ArrowBackRound, ModeStandbyRound } from "@vicons/material";
 import { useMessage } from "naive-ui";
 
@@ -538,11 +539,14 @@ const onVisibilityChange = () => {
 onMounted(() => {
     window.addEventListener("pagehide", flushAll);
     document.addEventListener("visibilitychange", onVisibilityChange);
+    // 媒体缓存写失败只提示一次；阅读与网络回退不受影响
+    setMediaCacheErrorHandler((message) => msg.warning(message));
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener("pagehide", flushAll);
     document.removeEventListener("visibilitychange", onVisibilityChange);
+    setMediaCacheErrorHandler();
 });
 </script>
 

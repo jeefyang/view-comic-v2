@@ -17,6 +17,8 @@ import { readerSettings } from "@/views/reader/readerSettings";
 import { readerPages } from "@/views/reader/readerPages";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
+import { buildMediaKey, deleteMedia, setMediaPinned } from "@/utils/mediaCache";
+import { openMedia, type MediaSourceHandle } from "@/utils/mediaSource";
 import { slowNetwork } from "@/utils/network";
 import "@/views/reader/components/pageLoading.css";
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -85,6 +87,84 @@ const droppedDivs = new WeakSet<HTMLElement>();
 /** 占位层用到的定时器，页被回收时一起清掉 */
 const pageTimers = new WeakMap<HTMLElement, ReturnType<typeof setTimeout>[]>();
 
+/** 每页当前使用的媒体句柄（objectURL / 进行中的请求）；换页或回收时必须释放 */
+const mediaHandles = new WeakMap<WaterfallPageType, MediaSourceHandle>();
+/** 每页的缓存 key；即使句柄还没建好也要先记下来，供可见性变化时 pin */
+const mediaKeys = new WeakMap<WaterfallPageType, string>();
+/** 已经进入视口的页；缓存只写用户真正看过的页 */
+const mediaVisible = new WeakSet<WaterfallPageType>();
+/** 图片已经 decode 完成（onload）的页；可见 + 已 decode 才写缓存 */
+const mediaLoaded = new WeakSet<WaterfallPageType>();
+/** 正在写缓存的页，避免 onload 与可见性回调同时写同一条 */
+const mediaCommitting = new WeakSet<WaterfallPageType>();
+/** 图片实际加载到的 URL（可能带 retry=），写缓存时按它 fetch */
+const mediaFetchUrls = new WeakMap<WaterfallPageType, string>();
+/** 每页对应的容器，供可见性观察回调反查页对象 */
+const divPages = new WeakMap<HTMLElement, WaterfallPageType>();
+/** 逐页的可见性观察器，root 是当前 scrollDiv */
+let visibilityObserver: IntersectionObserver | undefined;
+
+const pageMediaKey = (page: WaterfallPageType) => buildMediaKey({
+    userScope: configStore.userUUID,
+    editUUID: viewStore.curLibrary?.editUUID ?? "",
+    basePath: viewStore.comicFileList?.basePath ?? "",
+    kind: "image",
+    index: page.index,
+    name: page.name
+});
+
+const releasePageMedia = (page: WaterfallPageType) => {
+    const key = mediaKeys.get(page);
+    mediaHandles.get(page)?.release();
+    mediaHandles.delete(page);
+    mediaKeys.delete(page);
+    mediaVisible.delete(page);
+    mediaLoaded.delete(page);
+    mediaCommitting.delete(page);
+    mediaFetchUrls.delete(page);
+    if (key) {
+        setMediaPinned(key, false);
+    }
+};
+
+const commitPageMedia = async (page: WaterfallPageType) => {
+    const handle = mediaHandles.get(page);
+    if (!handle || !handle.cacheable || handle.fromCache) {
+        return;
+    }
+    if (!mediaVisible.has(page) || !mediaLoaded.has(page) || mediaCommitting.has(page)) {
+        return;
+    }
+    const key = mediaKeys.get(page);
+    if (!key) {
+        return;
+    }
+    mediaCommitting.add(page);
+    try {
+        await handle.commit(mediaFetchUrls.get(page) ?? page.url);
+    } catch {
+        // 写缓存失败不影响阅读，缓存模块会自行提示一次
+    } finally {
+        mediaCommitting.delete(page);
+    }
+};
+
+const markPageVisible = (page: WaterfallPageType, visible: boolean) => {
+    const key = mediaKeys.get(page) ?? "";
+    if (visible) {
+        mediaVisible.add(page);
+        if (key) {
+            setMediaPinned(key, true);
+        }
+        void commitPageMedia(page);
+        return;
+    }
+    mediaVisible.delete(page);
+    if (key) {
+        setMediaPinned(key, false);
+    }
+};
+
 const trackTimer = (div: HTMLElement, timer: ReturnType<typeof setTimeout>) => {
     const list = pageTimers.get(div);
     if (list) {
@@ -111,7 +191,7 @@ interface PagePlaceholder {
  * 图片加载期间的占位层：转圈 + 文案。
  * 瀑布流的 DOM 是命令式创建的，用不了 SFC，样式来自 pageLoading.css（全局）。
  */
-const createPagePlaceholder = (div: HTMLDivElement, img: HTMLImageElement, page: WaterfallPageType): PagePlaceholder => {
+const createPagePlaceholder = (div: HTMLDivElement, page: WaterfallPageType, retry: (token: number) => void): PagePlaceholder => {
     const wrap = document.createElement("div");
     wrap.className = "page-loading";
     const spinner = document.createElement("span");
@@ -151,7 +231,7 @@ const createPagePlaceholder = (div: HTMLDivElement, img: HTMLImageElement, page:
                     if (droppedDivs.has(div)) {
                         return;
                     }
-                    img.src = retryUrl(page.url, attempt);
+                    retry(attempt);
                 }, delay)
             );
             return;
@@ -170,7 +250,7 @@ const createPagePlaceholder = (div: HTMLDivElement, img: HTMLImageElement, page:
         attempt = 0;
         wrap.classList.remove("is-failed");
         text.textContent = "加载中";
-        img.src = retryUrl(page.url, Date.now());
+        retry(Date.now());
     });
 
     return {
@@ -190,8 +270,10 @@ const removePage = (page: WaterfallPageType) => {
     // 页已经回收，还没返回的尺寸探测没有意义，直接取消
     sizeAbortMap.get(page)?.abort();
     sizeAbortMap.delete(page);
+    releasePageMedia(page);
     if (page.InsertDom) {
         droppedDivs.add(page.InsertDom);
+        divPages.delete(page.InsertDom);
         clearPageTimers(page.InsertDom);
         // 用清空 src 而不是 removeAttribute：前者能让浏览器中止进行中的下载，
         // 后者只是移除属性，请求可能还会继续跑完
@@ -208,6 +290,8 @@ const removePage = (page: WaterfallPageType) => {
 };
 
 const resetData = (measuredWidth?: number) => {
+    visibilityObserver?.disconnect();
+    visibilityObserver = undefined;
     topObserver?.disconnect();
     topObserver = undefined;
     bottomObserver?.disconnect();
@@ -367,6 +451,7 @@ const createContentDiv = (page: WaterfallPageType) => {
     if (page.half !== undefined) {
         div.style.overflow = "hidden";
     }
+    divPages.set(div, page);
     // 视频页暂不在瀑布流里播放，也不要走图片尺寸探测/预加载链路
     if (page.extType === "video") {
         const hint = document.createElement("div");
@@ -419,43 +504,99 @@ const createContentDiv = (page: WaterfallPageType) => {
             img.style.left = (page.half === 0 ? 0 : -screenWidth) + "px";
         }
     };
-    if (page.loaded) {
-        imgOnload(page.width, page.height);
-    } else {
-        // 同一张图的两半共用尺寸，优先用已经缓存下来的
-        const cached = viewStore.comicFileList.list.find((it) => it.index === page.index);
-        if (cached?.width && cached?.height) {
-            imgOnload(cached.width, cached.height);
-        } else if (slowNetwork.value) {
-            // 慢网时不再额外抢一个连接去探尺寸，等 img.onload 自己报
-        } else {
-            const controller = new AbortController();
-            sizeAbortMap.set(page, controller);
-            decodeSize(page.url, controller.signal).then(([size, err]) => {
-                sizeAbortMap.delete(page);
-                if (err || !size) {
-                    return;
-                }
-                imgOnload(size.width, size.height);
-            });
+
+    let placeholder: PagePlaceholder | undefined;
+    let loadToken = 0;
+    let cacheFallback = false;
+
+    const load = async (forceNetwork = false, retryToken = 0) => {
+        const token = ++loadToken;
+        const key = pageMediaKey(page);
+        mediaKeys.set(page, key);
+        if (forceNetwork && key) {
+            await deleteMedia(key);
         }
-    }
-    // 占位层与加载逻辑都要在设 src 之前装好：图片命中缓存时 onload 会很快回调
-    const placeholder = createPagePlaceholder(div, img, page);
-    img.onload = () => {
-        placeholder.onLoad();
-        img.style.opacity = "1";
-        imgOnload(img.naturalWidth, img.naturalHeight);
-    };
-    img.onerror = () => {
-        if (droppedDivs.has(div)) {
+        let handle: MediaSourceHandle;
+        try {
+            handle = await openMedia(page.url, key, "image", {
+                userScope: configStore.userUUID,
+                forceNetwork
+            });
+        } catch {
+            if (token !== loadToken || droppedDivs.has(div)) {
+                return;
+            }
+            img.src = retryToken ? retryUrl(page.url, retryToken) : page.url;
             return;
         }
-        // 失败交给占位层：自动重试两次，仍失败就显示可点击的提示
-        placeholder.onFail();
+        if (token !== loadToken || droppedDivs.has(div)) {
+            handle.release();
+            return;
+        }
+        const wasVisible = mediaVisible.has(page);
+        releasePageMedia(page);
+        mediaHandles.set(page, handle);
+        mediaKeys.set(page, key);
+        if (wasVisible && key) {
+            mediaVisible.add(page);
+            setMediaPinned(key, true);
+        }
+
+        if (page.loaded) {
+            imgOnload(page.width, page.height);
+        } else {
+            // 同一张图的两半共用尺寸，优先用已经缓存下来的
+            const cached = viewStore.comicFileList.list.find((it) => it.index === page.index);
+            if (cached?.width && cached?.height) {
+                imgOnload(cached.width, cached.height);
+            } else if (slowNetwork.value || handle.fromCache) {
+                // 慢网不额外抢连接；缓存命中的图已在本地，也不需要再探尺寸
+            } else {
+                const controller = new AbortController();
+                sizeAbortMap.set(page, controller);
+                decodeSize(page.url, controller.signal).then(([size, err]) => {
+                    sizeAbortMap.delete(page);
+                    if (err || !size) {
+                        return;
+                    }
+                    imgOnload(size.width, size.height);
+                });
+            }
+        }
+        // 图片真正显示（可见 + onload）之后才写缓存，预加载但没进视口的页不写
+        img.onload = () => {
+            placeholder?.onLoad();
+            img.style.opacity = "1";
+            imgOnload(img.naturalWidth, img.naturalHeight);
+            mediaLoaded.add(page);
+            mediaFetchUrls.set(page, img.currentSrc || page.url);
+            void commitPageMedia(page);
+        };
+        img.onerror = () => {
+            if (droppedDivs.has(div)) {
+                return;
+            }
+            // 缓存条目损坏时删掉它，改走网络；网络仍失败再交给占位层重试
+            if (handle.fromCache && !cacheFallback && key) {
+                cacheFallback = true;
+                void deleteMedia(key);
+                void load(true, Date.now());
+                return;
+            }
+            placeholder?.onFail();
+        };
+        const src = retryToken && !handle.fromCache ? retryUrl(handle.src || page.url, retryToken) : (handle.src || page.url);
+        img.src = src;
     };
+
+    // 占位层、图片节点和可见性观察先装好，再开始取源：
+    // 这样 IDB 打开/缓存查找期间也有加载态，并且 img 只 append 一次。
+    placeholder = createPagePlaceholder(div, page, (nextToken) => {
+        void load(true, nextToken);
+    });
     div.appendChild(img);
-    img.src = page.url;
+    visibilityObserver?.observe(div);
+    void load(false);
     return div;
 };
 
@@ -681,6 +822,17 @@ const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
     scrollDiv.append(topDiv, contentDiv, bottomDiv);
     fragment.append(scrollDiv);
     main.append(fragment);
+    // 逐页观察是否真的进入视口：预加载但没被看到的页不写缓存，当前可见页要被 pin 住
+    visibilityObserver?.disconnect();
+    const observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            const page = divPages.get(entry.target as HTMLElement);
+            if (page) {
+                markPageVisible(page, entry.isIntersecting);
+            }
+        }
+    }, { root: scrollDiv, threshold: 0 });
+    visibilityObserver = observer;
     // 正常路径下滚动条已隐藏，clientWidth 就是完整可用宽度；
     // 这里仍按实际 clientWidth 复核一次，兼容某些浏览器/自定义滚动条仍占宽的情况。
     // measuredWidth 已经传过时不再递归，避免循环。
@@ -772,6 +924,11 @@ onBeforeUnmount(() => {
     topObserver = undefined;
     bottomObserver?.disconnect();
     bottomObserver = undefined;
+    visibilityObserver?.disconnect();
+    visibilityObserver = undefined;
+    for (const page of sortPageList) {
+        releasePageMedia(page);
+    }
     if (resizeTimer) {
         clearTimeout(resizeTimer);
         resizeTimer = undefined;
