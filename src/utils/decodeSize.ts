@@ -59,19 +59,70 @@ const fetchSize = async (url: string, signal?: AbortSignal): Promise<[SizeResult
     try {
         const response = await fetch(url, {
             headers: {
-                'Range': `bytes=0-${RANGE_SIZE}`
+                'Range': `bytes=0-${RANGE_SIZE - 1}`
             },
             signal: controller.signal
         });
         if (!response.ok) {
             return [undefined, response.statusText];
         }
-        const arrayBuffer = await response.arrayBuffer();
-        const data = imageSize(new Uint8Array(arrayBuffer));
-        if (!data.width || !data.height) {
+        const body = response.body;
+        if (!body) {
+            return [undefined, '响应没有可读取的内容'];
+        }
+        const reader = body.getReader();
+        const chunks: Uint8Array[] = [];
+        let total = 0;
+        try {
+            while (total < RANGE_SIZE) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    break;
+                }
+                if (!value || value.byteLength === 0) {
+                    continue;
+                }
+                const remain = RANGE_SIZE - total;
+                const part = value.byteLength > remain ? value.subarray(0, remain) : value;
+                chunks.push(part);
+                total += part.byteLength;
+            }
+        }
+        finally {
+            // 只读到图片头部就取消，别把整张图（甚至 zip 视频）拖下来
+            await reader.cancel().catch(() => undefined);
+        }
+        if (total === 0) {
+            return [undefined, '响应为空'];
+        }
+        if (response.status === 206) {
+            const contentRange = response.headers.get('content-range');
+            const matched = contentRange ? /^bytes\s+0-(\d+)\/(\d+)$/i.exec(contentRange.trim()) : null;
+            if (!matched) {
+                return [undefined, 'Content-Range 无效'];
+            }
+            const end = Number(matched[1]);
+            const declaredSize = Number(matched[2]);
+            if (!Number.isFinite(end) || !Number.isFinite(declaredSize) || end < 0 || end >= declaredSize) {
+                return [undefined, 'Content-Range 无效'];
+            }
+            const expected = Math.min(RANGE_SIZE, end + 1);
+            if (total < expected) {
+                // 声明了更大的范围却提前结束：宁可让调用方回退，也不拿半张图解析
+                return [undefined, '响应被截断'];
+            }
+        }
+        const data = new Uint8Array(total);
+        let offset = 0;
+        for (const part of chunks) {
+            data.set(part, offset);
+            offset += part.byteLength;
+        }
+        const sizeData = imageSize(data);
+        if (!sizeData.width || !sizeData.height) {
             return [undefined, '无法解析图片尺寸'];
         }
-        const size: SizeResult = { width: data.width, height: data.height };
+        const size: SizeResult = { width: sizeData.width, height: sizeData.height };
         setCache(url, size);
         return [size, undefined];
     } catch (error) {

@@ -6,7 +6,7 @@ import { useViewApi } from './viewApi.js';
 import { getLibCache, getLibPathByUUID } from '../utils/library.js';
 import fs from 'fs';
 import path from "path";
-import { getComicViewList, getComicViewListByFile } from '../utils/view.js';
+import { getComicViewList, getDirMediaList } from '../utils/view.js';
 import { getFileExt } from '../utils/index.js';
 import { getMyStreamZip } from '../utils/myStreamZip.js';
 import { getContentType } from '@common/utils/ext.js';
@@ -104,6 +104,111 @@ const sendStream = (res: any, o: {
     o.open(range.start, range.end).pipe(res);
 };
 
+/**
+ * zip 条目前缀响应：只发送前 end+1 字节。
+ *
+ * node-stream-zip 只能把条目边解压边发，不能 seek；图片尺寸探测只需要 64KB，
+ * 所以到量后必须销毁解压流，不能为了一个 Range 请求把整张图解压完。
+ */
+const sendZipPrefix = (res: any, stream: NodeJS.ReadableStream, end: number, onDone: () => void) => {
+    const target = end + 1;
+    let sent = 0;
+    let settled = false;
+
+    const cleanup = () => {
+        if (settled) {
+            return;
+        }
+        settled = true;
+        stream.removeListener("data", onData);
+        stream.removeListener("end", onEnd);
+        stream.removeListener("error", onError);
+        res.removeListener("drain", onDrain);
+        res.removeListener("close", onClose);
+        try {
+            (stream as any).destroy?.();
+        }
+        catch {
+            // 流已经结束/销毁：忽略
+        }
+        onDone();
+    };
+
+    const finish = (endResponse: boolean) => {
+        if (settled) {
+            return;
+        }
+        cleanup();
+        if (endResponse && !res.writableEnded) {
+            res.end();
+        }
+    };
+
+    function onData(chunk: Buffer) {
+        if (settled) {
+            return;
+        }
+        const remain = target - sent;
+        if (remain <= 0) {
+            finish(true);
+            return;
+        }
+        const part = chunk.length > remain ? chunk.subarray(0, remain) : chunk;
+        sent += part.length;
+        let canContinue: boolean;
+        try {
+            canContinue = res.write(part);
+        }
+        catch (e) {
+            console.error("写压缩包前缀失败:", e);
+            finish(false);
+            return;
+        }
+        if (sent >= target) {
+            finish(true);
+            return;
+        }
+        if (!canContinue) {
+            (stream as any).pause?.();
+        }
+    }
+
+    function onDrain() {
+        (stream as any).resume?.();
+    }
+
+    function onEnd() {
+        if (sent < target) {
+            console.error(`压缩包条目读取提前结束：需要 ${target} 字节，实际 ${sent} 字节`);
+            finish(false);
+            if (!res.writableEnded) {
+                res.destroy();
+            }
+            return;
+        }
+        finish(true);
+    }
+
+    function onError(err: Error) {
+        console.error("读取压缩包条目时出错:", err);
+        finish(false);
+        if (!res.writableEnded) {
+            res.destroy();
+        }
+    }
+
+    function onClose() {
+        finish(false);
+    }
+
+    res.on("drain", onDrain);
+    res.on("close", onClose);
+    stream.on("data", onData);
+    stream.on("end", onEnd);
+    stream.on("error", onError);
+    (stream as any).resume?.();
+};
+
 // 文件读取
 router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     const editUUID = req.params.editUUID;
@@ -141,15 +246,25 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
     try {
         const stat = fs.statSync(url);
         if (stat.isDirectory()) {
-            const data = getComicViewListByFile([url]);
-            if (data[1]) {
+            const list = getDirMediaList(url, stat);
+            if (num < 0 || num >= list.length) {
                 return res.sendStatus(404);
             }
 
-            const fileP = path.join(url, data[0]!.list[num].name);
-            const fileSize = fs.statSync(fileP).size;
+            const fileP = path.join(url, list[num]!.name);
+            let fileStat: ReturnType<typeof fs.statSync>;
+            try {
+                fileStat = fs.statSync(fileP);
+            }
+            catch {
+                // 清单与文件系统之间被删掉：越界/缺页一律 404，不要冒成 500
+                return res.sendStatus(404);
+            }
+            if (!fileStat.isFile()) {
+                return res.sendStatus(404);
+            }
             sendStream(res, {
-                size: fileSize,
+                size: fileStat.size,
                 contentType: getContentType(fileP),
                 rangeHeader: req.headers.range,
                 open: (start, end) => {
@@ -163,6 +278,7 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
                     return fileStream;
                 }
             });
+            return;
         }
         else {
             const extData = getFileExt(url);
@@ -234,18 +350,42 @@ router.get("/file/:editUUID/:index{/*fromPathList}", async (req, res) => {
                 return res.status(500).send('压缩包无法读取');
             }
             const obj = data[0]!;
-            const entry = obj.fileList[num];
+            if (num < 0 || num >= obj.fileList.length) {
+                return res.sendStatus(404);
+            }
+            const entry = obj.fileList[num]!;
             const stream = await obj.getFileByIndex(num);
             if (!stream) {
                 return res.sendStatus(404);
             }
-            // node-stream-zip 只能把整条解压出来，做不了字节切片；这里忽略 Range，
-            // 回 200 + 完整内容（HTTP 允许服务端忽略 Range，客户端会接受 200 的全量响应）。
-            // 关键是绝不能截断后还回 200 —— 那会被浏览器当成完整内容长期缓存。
+            // 视频不是图片：不做 206 切片，也不能宣告 Accept-Ranges（zip 根本不能 seek）。
+            // 首版只接受 200 全量，浏览器会把整段视频缓冲下来再播。
+            if (entry.extType === "video") {
+                res.setHeader("Content-Type", getContentType(entry.name));
+                res.setHeader("Content-Length", String(entry.size));
+                res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+                res.status(200);
+                stream.pipe(res);
+                stream.on('end', () => {
+                    obj.finishStream();
+                });
+                return;
+            }
+            // node-stream-zip 不能 seek，但图片尺寸探测只读前 64KB：
+            // 只有「从 0 开始的前缀 Range」可以真回 206，到量后销毁解压流。
+            // 其他 Range（非 0 起点、多段等）仍按 HTTP 语义忽略，回 200 全量。
             res.setHeader("Content-Type", getContentType(entry.name));
             res.setHeader("Accept-Ranges", 'bytes');
-            res.setHeader("Content-Length", String(entry.size));
             res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+            const range = parseRange(req.headers.range, entry.size);
+            if (range && range !== "invalid" && range.start === 0) {
+                res.setHeader("Content-Range", `bytes 0-${range.end}/${entry.size}`);
+                res.setHeader("Content-Length", String(range.end + 1));
+                res.status(206);
+                sendZipPrefix(res, stream, range.end, () => obj.finishStream());
+                return;
+            }
+            res.setHeader("Content-Length", String(entry.size));
             res.status(200);
             stream.pipe(res);
             stream.on('end', () => {
