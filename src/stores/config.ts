@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue';
 import { defineStore } from 'pinia';
 import { libraryFetch, userFetch } from '@/utils/jFetch';
+import { clearMediaCacheForUser } from '@/utils/mediaCache';
 
 /** 阅读边距默认值（px）：手机上一屏正好留出安全边距，又不至于浪费显示面积 */
 export const DEFAULT_PADDING = 8;
@@ -75,10 +76,15 @@ export const useConfigStore = defineStore('config', () => {
     };
 
     const toLogout = () => {
+        const scope = userUUID.value;
         username.value = "";
         token.value = "";
         userType.value = "user";
         save();
+        // 媒体缓存按用户隔离：退出时只清这个用户前缀，不阻塞登出
+        if (scope) {
+            void clearMediaCacheForUser(scope);
+        }
     };
 
 

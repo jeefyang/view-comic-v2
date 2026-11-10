@@ -9,7 +9,7 @@
 ## 技术栈与启动
 
 - 前端：Vue 3.5 + TS + naive-ui + pinia + vue-router(hash) + UnoCSS + `@vicons/*`
-- 后端：Express 5 + bcrypt + node-stream-zip + image-size + dotenv + sharp（缩略图）
+- 后端：Express 5 + bcrypt + node-stream-zip + image-size + dotenv + sharp（缩略图）+ ffmpeg/ffprobe（可选，MP4/WebM 视频缩略图）
 - 构建：vite 7 + vue-tsc
 - `pnpm dev` → `node server/dev.mjs`：**一个进程、一个端口（读 .env 的 PORT，当前是 6006）**
   - `server/dev.mjs` 用 Vite 的 JS API 建 `middlewareMode` dev server（页面 / HMR / 静态资源都走它），`httpServer` 自己 `listen`
@@ -74,7 +74,7 @@
 
 ### 缩略图
 - 地址：`/api/Thumbnail/{editUUID}/{width}/{相对路径}`，路径里可以带压缩包内条目（`img.zip/0001.jpg`），由 `server/utils/thumb.ts` 的 `splitZipEntry()` 拆。
-- 生成：`getThumbBuffer()` 命中磁盘直接读，否则按类型取源图（目录取自然序首图、图片取自身、压缩包取包内第一张图），sharp 按宽度等比缩放成 jpeg，落 `data/thumbs/{thumbId}_{width}.jpg`（`thumbId = sha1(库名 + \0 + 相对路径).slice(0,20)`）。
+- 生成：`getThumbBuffer()` 命中磁盘直接读，否则按类型取源图（目录取自然序首图、图片取自身、压缩包取包内第一张图；MP4/WebM 先经 ffmpeg 取中间帧），sharp 仅处理图片、按宽度等比缩放成 jpeg，落 `data/thumbs/{thumbId}_{width}.jpg`（`thumbId = sha1(库名 + \0 + 相对路径).slice(0,20)`）；视频缩略图额外加 `_v2` 隔离旧黑帧缓存。
 - 「按 id + 宽度查询，没有就生成」就是全部策略：没被请求过的路径不会生成文件，`data/thumbs` 一开始可能根本不存在（`ensureDir()` 在生成时才建）。
 - 目录书里一个图片都没有时（常见形态：只放了一个 `compare.zip` 的 `compare/`），回退到目录内第一个压缩包的首图（`firstZipInDir()`，只试前 3 个包），否则封面 404。
 - 算 id 前路径必须过 `normalizeRelPath()`（`\`→`/`、合并 `//`、去掉开头 `./`、空串归 `"."`）：前端不同入口会拼出 `img-001.jpg` 与 `./img-001.jpg`，不归一就会给同一个文件各存一份。
@@ -85,6 +85,19 @@
 - **缩略图路径要跟着条目走，不能实时读当前层级**：书架条目是 `ShelfFileItem = ViewFileType & { thumbPath: string }`，`sortShelfFileList()` 生成条目时就把当刻 `shelfPath` 拼进去；`FileItem.vue` 只读 `props.item.thumbPath`。阅读页文件列表同理，`FileListDrawer.vue` 在 `rows` 里连 `path` 一起算好再绑给 `<thumb-image :path>`。另外 `updateShelfFolder()` 必须在 `await` 之前先清空 `shelfFileList` / `shelfFolder` / `shelfScrollName`——否则切目录的一瞬间旧条目会带着新前缀去要 `compare/img-006.jpg` 这类不存在的路径，日志里表现为一批「路径不存在或越界」404。
 - 开关：`src/utils/appFeatures.ts` 的 `appFeatures.thumbnails`（设置 → 数据 → 缩略图）。关掉后前端一个请求都不发，书架与阅读页文件列表都退回图标。
 - 压缩包并发：`myStreamZip.ts` 必须**等 `init()` 完成再入缓存**（用 `opening` Promise 合并同路径的首次打开），否则并发首次访问会拿到空的 `fileList`；读取单个条目不要调 `zip.finishStream()`，它会关掉同包其它请求的流。
+
+### 阅读页媒体缓存（图片 + 视频）
+
+- 模块：`src/utils/mediaCache.ts`（IndexedDB 与 LRU）+ `src/utils/mediaSource.ts`（把网络/缓存包装成 objectURL）。**不要**再给阅读页另起一套缓存；缩略图仍走 `view-comic-thumbs`，两者互不相干。
+- 库：IndexedDB `view-comic-media` v1，两个 store：`media` 存 `{ key, blob }`，`meta` 存 `{ key, bytes, kind, lastAccess }` 并带 `lastAccess` 索引；`meta` 里的 `__stats__` 是唯一权威计数（count/bytes，图片/视频各自累计），设置页“已用”读它，**不能**用 `navigator.storage.estimate().usage`。
+- 预算：目标容量默认 2GiB（可改），`realCap = min(configured, floor(quota × 80%))`，没有 `navigator.storage.estimate` 时回退 configured；条目 2000（图片+视频合计）；单图不设硬上限；视频单文件 `videoCap = min(500MiB, floor(realCap × 25%))`，超过的视频直连网络播放、不写缓存。
+- 统一 LRU：图片和视频共享字节与条目双上限，不分区、不预留图片空间；写条目、改 stats、淘汰在同一个 `readwrite` 事务里；按 `lastAccess` 索引游标淘汰，单事务最多 200 条，跳过 `pinnedKeys`（当前页/在播视频）；`lastAccess` 回写节流 5 分钟。
+- key：`mc:1:<userScope>:<editUUID>:<basePath>:<kind>:<index>:<name>:<FILE_URL_VERSION>`，复用 `src/utils/fileUrl.ts` 的 `normalizeBasePath()` 与 `FILE_URL_VERSION`；超过 1024 字符放弃缓存。退出登录只清 `mc:1:<userScope>:` 前缀，不清其他用户。
+- 写入时机：图片必须“进入视口 + onload 解码完成”才写；瀑布流预加载但没进视口的页不写；单页当前页 onload 后写。视频必须整段 fetch 成 Blob、`playing` 之后才写；不预取、不等 `ended`（`loop` 不触发）。命中缓存时 `fromCache=true` 且不再回写。
+- 缓存损坏：图片/视频从缓存播放失败时先 `deleteMedia(key)`，再走网络重试一次；不要一次失败就判整页加载失败。
+- 配额失败：`QuotaExceededError` 先淘汰 `max(20, ceil(count×10%))` 再重试一次；仍失败本会话停止写入，只提示一次（`readerView.vue` 注册 `setMediaCacheErrorHandler`），读取不受影响。
+- 设置页“数据”标签：容量上限、条目上限、已用/图片/视频占用、清除媒体缓存；`清除当前客户端缓存` 会先清媒体缓存再 `configStore.clear()`。
+- 生产 CSP 已放行 `blob:`（`img-src` / `media-src` / `connect-src`），否则缓存 Blob 的 objectURL 会被拦；不要假设 Service Worker/Cache API 可用——局域网 `http://<ip>:<port>` 不是安全上下文，本项目刻意只用 IndexedDB。
 
 ### 容器书（PDF / EPUB / MOBI）页图
 - 「和 zip 一致」的全部含义：`comicViewList` 回同样的 `{ list, baseFile, basePath, start }`，页名固定 7 位 `0000001.jpg`、index 0 起，URL 仍是 `/api/file/{editUUID}/{index}/{容器相对路径}`，进度 / 书签 / 文件列表一行不改。
@@ -136,7 +149,7 @@
 
 ## 已实现的功能面
 
-- 阅读器：瀑布流 / 单页翻页两种模式；自适应 / 宽度 / 高度 / 旋转四种适配（宽度与高度适应可拖动看超出部分）；双开页自动两屏（顺序随翻页方向）；页码指示、文件名栏、点击页码跳页、文件列表抽屉（三种排序 + 正反序）
+- 阅读器：瀑布流 / 单页翻页两种模式；自适应 / 宽度 / 高度 / 旋转四种适配（宽度与高度适应可拖动看超出部分）；双开页自动两屏（顺序随翻页方向）；页码指示、文件名栏、点击页码跳页、文件列表抽屉（三种排序 + 正反序）；单页支持 MP4/WebM 视频（静音循环、进视口自动播放、离开暂停、40px 播放/暂停按钮五位置默认右下；视频不参与双开页）
 - 加载体验：每页加载占位（转圈 / 慢网提示 / 失败点击重试，自动重试 2 次）；慢网（2G/3G）自动降低预加载与并发
 - 点击区域：可拖拽 / 八向改大小 / 2% 吸附；动作含翻页、切 UI、设置、跳页、返回书架 / 书库、切换适配方式；预设布局；布局上传到个人账户（`userConfig.tapZoneLayouts`，同名覆盖）
 - 设置页：阅读 / 翻页 / 账号 / 数据四个标签；阅读设置另有半屏抽屉
@@ -146,7 +159,8 @@
 - 滚动条：全局统一成细圆角半透明滑块（`src/assets/scrollbar.css`），两个抽屉改用 naive 滚动条
 - 阅读边距：设置 → 阅读 → 「阅读边距」可调上/下/左/右（0–48px，默认 8/8/8/8）与瀑布流图片间距（0–48px，默认 6），瀑布流与单页都生效，改完 500ms 防抖写云端（`paddingTop/Bottom/Left/Right`、`imageGap`，旧的 `padding` / `pageMargin` 只做一次迁移读取）
 - 书架快捷滚动：右下角悬浮两个按钮（回到顶部 / 滚到底部），`FileListItem2` 通过 `defineExpose` 暴露 `scrollToTop/scrollToBottom/snapshot`
-- 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
+- 缩略图：服务端按需生成（目录 / 图片 / 压缩包首图 / MP4/WebM 中间帧，支持包内条目）+ IndexedDB 缓存 + 生成队列背压 + 全局开关
+- 媒体缓存：阅读页图片与 MP4/WebM 视频写 IndexedDB，2GiB/2000 条统一 LRU；命中直接 objectURL，设置页可改容量/名额并清除（图片缓存与缩略图缓存互相独立）
 - 电子书：PDF / EPUB / MOBI 已按「模拟 zip 页清单」接入（书架入口、页列表、按页出图、页缩略图、进度 / 书签）；EPUB / MOBI 页图是包内原图透传，不占渲染槽、不落盘；azw3 与文字版 MOBI / 可重排 EPUB 回 415 文案
 - 安全：`/file`、`/view/*` 全部限制在书库根内
 
@@ -157,5 +171,4 @@
 - MOBI 只做固定版式 / 图片型：文字版、`azw3`（含 KF8-only）回 415；BMP 页缩略图靠 `pages.ts` 的 `decodeBmpRaw()`（sharp 不认 BMP，只解 24/32 位 BI_RGB，调色板 / RLE 的 BMP 缩略图仍 404）；文字版 / 多图页 EPUB 整本 415（可用 calibre 转图片型）
 - `JsonConfig` 是空接口，`/config/getConfig` 返回 `{}`
 - `rar` 仍被当普通文件处理（书架排序 / 过滤 / 搜索词已持久化，别再当待办）
-- 视频文件只做了类型角标，未取首帧缩略图
 - 超大图（几十 MB / 上亿像素）在浏览器里仍可能解不出来：曾做过「`/api/file?max=` + sharp 降采样 + 前端按像素自动切换」，实测用户那边大图依旧打不开，已整段撤回（`d163ade revert(reader): 撤掉超大图降采样`，`server/utils/largeImage.ts` 已删除）。要重做必须先拿到真实样张（本机三库最大只有 11.1MB / 8192×6144），别凭猜再动 `api.ts` 与 `PagedReader`。
