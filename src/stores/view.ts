@@ -208,9 +208,14 @@ export const useViewStore = defineStore('view', () => {
     };
 
     const setLibrary = (item: JsonLibrary) => {
-        // 换了书库，之前记的书架路径对它没意义
+        // 换了书库，之前记的书架路径和旧书架列表对它都没意义。
+        // 必须在这里同步清掉：书架是 keep-alive，若留到 shelfView 激活后再清，
+        // 旧行会先拿新书库的 editUUID + 旧 thumbPath 去请求缩略图，造成跨库 404。
         if (curLibrary.value?.uuid != item.uuid) {
             shelfPath.value = [];
+            shelfFileList.value = [];
+            shelfFolder.value = undefined;
+            shelfScrollName.value = "";
         }
         shelfLibraryUUID.value = item.uuid;
         curLibrary.value = item;
