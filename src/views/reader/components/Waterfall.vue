@@ -347,7 +347,8 @@ const resetData = (measuredWidth?: number) => {
         const order = imageIndex++;
         const isLoaded = !!item.width && !!item.height;
         const split = readerSettings.splitSpread && isLoaded && item.width! > item.height!;
-        const halves: (0 | 1 | undefined)[] = split ? [0, 1] : [undefined];
+        // 双开页的两屏顺序跟着阅读方向走：ltr 先左后右，rtl 先右后左
+        const halves: (0 | 1 | undefined)[] = split ? (readerSettings.direction === "rtl" ? [1, 0] : [0, 1]) : [undefined];
         for (const half of halves) {
             const scale = isLoaded ? (half === undefined ? screenWidth / item.width! : (screenWidth * 2) / item.width!) : 1;
             const divHeight = isLoaded ? item.height! * scale : estimateHeight;
@@ -384,23 +385,128 @@ const resetContentDiv = () => {
     return curContentDiv;
 };
 
-/** 已排好的页里发现横图需要拆成两屏时，等图片加载稳定后重排一次 */
-let splitTimer: ReturnType<typeof setTimeout> | undefined = undefined;
-let splitIndex = -1;
-const scheduleSplitRefresh = (originalIndex: number) => {
-    splitIndex = originalIndex;
-    if (splitTimer) {
-        clearTimeout(splitTimer);
+/** 当前滚动容器，拆分双开页时要拿它修正滚动位置 */
+let scrollEl: HTMLDivElement | undefined;
+
+/**
+ * 页被拆成两屏后换掉了：旧句柄延迟释放，让两屏先用同一个 objectURL 显示，
+ * 切换完成后才 revoke。pin 状态交给两屏自己维护，这里不要动。
+ */
+const retirePageMedia = (page: WaterfallPageType, delay = 0) => {
+    const handle = mediaHandles.get(page);
+    mediaHandles.delete(page);
+    mediaKeys.delete(page);
+    mediaVisible.delete(page);
+    mediaLoaded.delete(page);
+    mediaCommitting.delete(page);
+    mediaFetchUrls.delete(page);
+    sizeAbortMap.get(page)?.abort();
+    sizeAbortMap.delete(page);
+    if (!handle) {
+        return;
     }
-    splitTimer = setTimeout(() => {
-        splitTimer = undefined;
-        const target = splitIndex;
-        splitIndex = -1;
-        if (target >= 0) {
-            // 停在当前看到的页上重排，不要跳到刚加载出来的那一页
-            refresh(currentOriginalIndex());
+    if (delay > 0) {
+        setTimeout(() => handle.release(), delay);
+    } else {
+        handle.release();
+    }
+};
+
+/**
+ * 图片加载后才发现是横图（且开了自动分割）：就地把它拆成两屏。
+ * 以前这里走整份 refresh，会销毁并重建所有已显示的图片（闪屏），
+ * 滚动位置还会被拉回这一页的顶部（看起来像跳到了别的页）。
+ */
+const splitPageInPlace = (page: WaterfallPageType, width: number, height: number) => {
+    if (!readerSettings.splitSpread || page.half !== undefined || width <= height) {
+        return;
+    }
+    // 列表里找得到这一页才拆，找不到说明它已经被回收 / 重建过
+    const index = sortPageList[page.sortIndex] === page ? page.sortIndex : sortPageList.indexOf(page);
+    if (index < 0) {
+        return;
+    }
+    const gap = configStore.imageGap;
+    const scale = (screenWidth * 2) / width;
+    const divHeight = height * scale;
+    const displayHeight = divHeight + gap;
+    const oldDisplayHeight = page.displayHeight;
+    const newTotal = displayHeight * 2;
+    const delta = newTotal - oldDisplayHeight;
+    const halves: (0 | 1)[] = readerSettings.direction === "rtl" ? [1, 0] : [0, 1];
+
+    const replacements = halves.map((half, i) => ({
+        ...page,
+        half,
+        loaded: true,
+        width,
+        height,
+        divWidth: screenWidth,
+        divHeight,
+        displayWidth: screenWidth,
+        displayHeight,
+        contentScale: scale,
+        scroll: page.scroll + displayHeight * i,
+        sortIndex: index + i,
+        InsertDom: undefined
+    })) as WaterfallPageType[];
+
+    sortPageList.splice(index, 1, ...replacements);
+    for (let i = index + 2; i < sortPageList.length; i++) {
+        sortPageList[i].sortIndex = i;
+        sortPageList[i].scroll += delta;
+    }
+
+    // 视口落在这页里时按图片高度的比例换算到新的两屏；在这页下面时内容整体下移 delta
+    const scrollPos = scrollEl?.scrollTop ?? curScroll;
+    const oldEnd = page.scroll + oldDisplayHeight;
+    let targetScroll = scrollPos;
+    if (scrollPos >= oldEnd) {
+        targetScroll = scrollPos + delta;
+    } else if (scrollPos > page.scroll) {
+        targetScroll = page.scroll + ((scrollPos - page.scroll) / oldDisplayHeight) * newTotal;
+    }
+
+    const displayedIndex = displayPageList.indexOf(page);
+    if (displayedIndex >= 0) {
+        const oldDiv = page.InsertDom;
+        const oldImg = oldDiv?.querySelector("img");
+        // 已经解码过的图直接给两屏当初始 src，避免拆开的一瞬间闪白
+        const seedSrc = oldImg && oldImg.complete && oldImg.naturalWidth ? oldImg.src : undefined;
+        const newDivs = replacements.map((half) => createContentDiv(half, seedSrc));
+        replacements.forEach((half, i) => {
+            half.InsertDom = newDivs[i];
+        });
+        if (oldDiv?.parentNode) {
+            for (const div of newDivs) {
+                oldDiv.parentNode.insertBefore(div, oldDiv);
+            }
+            droppedDivs.add(oldDiv);
+            divPages.delete(oldDiv);
+            clearPageTimers(oldDiv);
+            if (oldImg) {
+                oldImg.src = "";
+            }
+            oldDiv.remove();
         }
-    }, 200);
+        displayPageList.splice(displayedIndex, 1, ...replacements);
+        // 两屏都在显示区里：内容高度自己会涨 delta，上下两个 spacer 不用动
+        retirePageMedia(page, seedSrc ? 1500 : 0);
+    } else {
+        if (index < (displayPageList[0]?.sortIndex ?? 0)) {
+            curTopHeight += delta;
+            curTopDiv.style.height = curTopHeight + "px";
+        } else {
+            curBottomHeight += delta;
+            curBottomDiv.style.height = curBottomHeight + "px";
+        }
+        retirePageMedia(page);
+    }
+
+    if (scrollEl && targetScroll !== scrollPos) {
+        scrollEl.scrollTop = targetScroll;
+        curScroll = scrollEl.scrollTop;
+    }
 };
 
 const updatePage = (page: WaterfallPageType, width: number, height: number) => {
@@ -423,7 +529,7 @@ const updatePage = (page: WaterfallPageType, width: number, height: number) => {
     viewStore.setPageSize(page.name, width, height);
 };
 
-const createContentDiv = (page: WaterfallPageType) => {
+const createContentDiv = (page: WaterfallPageType, seedSrc?: string) => {
     const div = document.createElement("div");
     // flex 容器里显式高度不会被压缩，保证实际占位与计算出的 divHeight 一致
     div.style.flex = "0 0 auto";
@@ -469,9 +575,9 @@ const createContentDiv = (page: WaterfallPageType) => {
             for (let n = page.sortIndex + 1; n < sortPageList.length; n++) {
                 sortPageList[n].scroll += deltaHeight;
             }
-            // 原来是按整页排的，量出来发现是横图：现在才知道该拆，重排一次（有缓存后不会再触发）
+            // 原来是按整页排的，量出来发现是横图：就地拆成两屏，不重建整个瀑布流
             if (readerSettings.splitSpread && page.half === undefined && width > height) {
-                scheduleSplitRefresh(page.order ?? 0);
+                splitPageInPlace(page, width, height);
             }
         }
         div.style.width = page.divWidth + "px";
@@ -582,6 +688,15 @@ const createContentDiv = (page: WaterfallPageType) => {
     });
     div.appendChild(img);
     visibilityObserver?.observe(div);
+    // 尺寸已知的页先把图片样式铺好；拆分双开页时两屏会带 seedSrc 立刻显示出图
+    if (page.loaded) {
+        imgOnload(page.width, page.height);
+    }
+    if (seedSrc) {
+        img.src = seedSrc;
+        img.style.opacity = "1";
+        placeholder.onLoad();
+    }
     void load(false);
     return div;
 };
@@ -662,28 +777,68 @@ const setDisplayPage = (page: WaterfallPageType) => {
     displayPageList = [...oldPageList];
 };
 
-/** 当前滚动位置所在的页索引，滚过末尾时取最后一页 */
-const resolveCurrentIndex = () => {
+/** 指定滚动位置所在的屏索引，滚过末尾时取最后一页 */
+const resolveIndexAt = (pos: number) => {
     const total = sortPageList.length;
     if (total == 0) {
         return 0;
     }
-    if (curScroll <= 0) {
+    if (pos <= 0) {
         return 0;
     }
-    // sortPageList 的 scroll 天然升序，二分找最后一个 scroll <= curScroll 的页。
+    // sortPageList 的 scroll 天然升序，二分找最后一个 scroll <= pos 的页。
     // 原来每帧线性扫描，滚动时每个 scroll 事件都要走一遍全部页。
     let low = 0;
     let high = total - 1;
     while (low < high) {
         const mid = (low + high + 1) >> 1;
-        if (sortPageList[mid].scroll <= curScroll) {
+        if (sortPageList[mid].scroll <= pos) {
             low = mid;
         } else {
             high = mid - 1;
         }
     }
     return low;
+};
+
+const resolveCurrentIndex = () => resolveIndexAt(curScroll);
+
+/** 同一张图在列表里占据的屏范围（双开页拆开后是两屏） */
+const imageRangeAt = (index: number) => {
+    const order = sortPageList[index]?.order ?? 0;
+    let first = index;
+    while (first > 0 && (sortPageList[first - 1].order ?? 0) === order) {
+        first--;
+    }
+    let total = 0;
+    for (let i = first; i < sortPageList.length && (sortPageList[i].order ?? 0) === order; i++) {
+        total += sortPageList[i].displayHeight;
+    }
+    return { first, total };
+};
+
+/**
+ * 记录当前阅读位置：哪张图 + 图内的高度比例。
+ * 布局重建后按比例还原，避免改边距 / 转屏 / 切换分割方式时被甩到别的页。
+ */
+const captureScrollAnchor = (pos: number): { order: number; ratio: number } | undefined => {
+    if (!sortPageList.length) {
+        return undefined;
+    }
+    const index = resolveIndexAt(pos);
+    const { first, total } = imageRangeAt(index);
+    const start = sortPageList[first].scroll;
+    const ratio = total > 0 ? Math.min(Math.max((pos - start) / total, 0), 1) : 0;
+    return { order: sortPageList[index].order ?? 0, ratio };
+};
+
+const resolveAnchorScroll = (anchor: { order: number; ratio: number }) => {
+    const first = sortPageList.findIndex((item) => (item.order ?? 0) === anchor.order);
+    if (first < 0) {
+        return undefined;
+    }
+    const { total } = imageRangeAt(first);
+    return sortPageList[first].scroll + total * anchor.ratio;
 };
 
 /** 页索引变化时上报给父组件；双开页的两屏共用一个原图索引，所以页码不跳 */
@@ -759,7 +914,7 @@ let scrollDelay = 300;
 let lastMainWidth = 0;
 let lastMainHeight = 0;
 
-const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
+const refresh = (jump: number, retry = 0, measuredWidth?: number, keepPosition = false, anchor?: { order: number; ratio: number }) => {
     const main = mainRef.value;
 
     if (!main) {
@@ -769,21 +924,33 @@ const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
     // 等一帧再试（最多 5 帧），避免 keep-alive 首次激活时的白屏。
     if (main.clientWidth <= 0 || main.clientHeight <= 0) {
         if (retry < 5) {
-            requestAnimationFrame(() => refresh(jump, retry + 1));
+            requestAnimationFrame(() => refresh(jump, retry + 1, measuredWidth, keepPosition, anchor));
         }
         return;
     }
     lastMainWidth = main.clientWidth;
     lastMainHeight = main.clientHeight;
+    // 重排会把所有高度推倒重算，先记住当前读到哪儿，完成后按比例还原
+    const source = anchor ?? (keepPosition ? captureScrollAnchor(scrollEl?.scrollTop ?? curScroll) : undefined);
     resetData(measuredWidth);
     // 外部传进来的是「排序后第几张图」，排好的列表按「屏」算（双开页占两屏），这里换算一次
     let start = sortPageList.findIndex((item) => item.order === jump);
     if (start < 0) {
         start = 0;
     }
+    let targetScroll = sortPageList[start]?.scroll ?? 0;
+    if (source) {
+        const restored = resolveAnchorScroll(source);
+        if (restored !== undefined) {
+            targetScroll = restored;
+            // 显示窗口从目标位置所在的那一屏开始
+            start = resolveIndexAt(targetScroll);
+        }
+    }
     const fragment = document.createDocumentFragment();
     const scrollDiv = document.createElement("div");
     scrollDiv.className = "scrollDiv";
+    scrollEl = scrollDiv;
     scrollDiv.addEventListener("scroll", (v) => {
         curScroll = scrollDiv.scrollTop;
         emitCurrentPage();
@@ -825,7 +992,7 @@ const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
     if (measuredWidth === undefined && scrollDiv.scrollHeight > scrollDiv.clientHeight) {
         const actualWidth = scrollDiv.clientWidth;
         if (actualWidth > 0 && Math.abs(actualWidth - screenWidth) >= 1) {
-            refresh(jump, 0, actualWidth);
+            refresh(jump, 0, actualWidth, keepPosition, source);
             return;
         }
     }
@@ -835,7 +1002,7 @@ const refresh = (jump: number, retry = 0, measuredWidth?: number) => {
     }
     // 真正滚动的是 scrollDiv，main 只是尺寸容器；
     // 同步定位一次，避免 IntersectionObserver 的首次回调把位置拉回顶部
-    scrollDiv.scrollTop = curTopHeight;
+    scrollDiv.scrollTop = targetScroll;
     curScroll = scrollDiv.scrollTop;
     emitCurrentPage();
 };
@@ -861,20 +1028,20 @@ const handleResize = () => {
         if (!sortPageList.length) {
             return;
         }
-        refresh(currentOriginalIndex());
+        refresh(currentOriginalIndex(), 0, undefined, true);
     }, 150);
 };
 
 let resizeObserver: ResizeObserver | undefined;
 
-// 切换「自动分割双开页」时整份布局都变了，停在当前页重排
+// 切换「自动分割双开页」或阅读方向时整份布局都变了，按当前阅读位置重排
 watch(
-    () => readerSettings.splitSpread,
+    () => [readerSettings.splitSpread, readerSettings.direction] as const,
     () => {
         if (!sortPageList.length) {
             return;
         }
-        refresh(currentOriginalIndex());
+        refresh(currentOriginalIndex(), 0, undefined, true);
     }
 );
 
@@ -885,7 +1052,7 @@ watch(
         if (!sortPageList.length) {
             return;
         }
-        refresh(currentOriginalIndex());
+        refresh(currentOriginalIndex(), 0, undefined, true);
     }
 );
 
@@ -922,10 +1089,6 @@ onBeforeUnmount(() => {
     if (scrollTime) {
         clearTimeout(scrollTime);
         scrollTime = undefined;
-    }
-    if (splitTimer) {
-        clearTimeout(splitTimer);
-        splitTimer = undefined;
     }
     // 防抖窗口内离开时把最后一次尺寸写入落盘，避免丢缓存
     viewStore.flushPageSizes();
