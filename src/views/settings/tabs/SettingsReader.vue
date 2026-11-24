@@ -65,32 +65,32 @@
                 <span class="spacing-label">瀑布流</span>
                 <n-input-number
                     size="small"
-                    style="width: 120px"
+                    style="width: 104px"
                     :value="readerSettings.waterfallPreload"
                     :min="WATERFALL_PRELOAD.min"
                     :step="1"
                     @update:value="(v: number | null) => (readerSettings.waterfallPreload = normalizeWaterfallPreload(v))"
                 />
-                <span class="spacing-suffix">页，同时驻留页数不少于它</span>
+                <span class="preload-unit">页</span>
             </div>
             <div class="spacing-row">
                 <span class="spacing-label">单页前后</span>
                 <n-input-number
                     size="small"
-                    style="width: 120px"
+                    style="width: 104px"
                     :value="readerSettings.pagedPreload"
                     :min="PAGED_PRELOAD.min"
                     :step="1"
                     @update:value="(v: number | null) => (readerSettings.pagedPreload = normalizePagedPreload(v))"
                 />
-                <span class="spacing-suffix">页，前后各预加载 N 页</span>
+                <span class="preload-unit">页</span>
             </div>
             <n-alert v-if="preloadHeavy" type="warning" show-icon class="preload-alert">
                 预加载页数偏大：会同时解码更多大图，手机可能卡顿或内存吃紧。建议瀑布流不超过
                 {{ WATERFALL_PRELOAD.recommendedMax }} 页、单页前后不超过 {{ PAGED_PRELOAD.recommendedMax }} 页。
             </n-alert>
-            <div class="spacing-tip">
-                <span>页数越大滚动越顺，占用内存与带宽也越多；弱网时会自动调低。</span>
+            <div class="preload-desc">瀑布流填提前加载的页数，同时驻留页数不少于它；单页填当前页前后各预加载的页数。弱网时自动调低。</div>
+            <div class="preload-actions">
                 <n-button size="tiny" quaternary @click="resetPreload">恢复默认</n-button>
             </div>
         </div>
@@ -183,6 +183,7 @@ const directionOptions: { value: PageDirectionType; label: string; description: 
 .spacing-row {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
     padding: 2px 12px;
 }
@@ -208,9 +209,23 @@ const directionOptions: { value: PageDirectionType; label: string; description: 
     font-variant-numeric: tabular-nums;
 }
 
-.spacing-suffix {
+.preload-unit {
+    flex: none;
     font-size: 12px;
     opacity: 0.55;
+}
+
+.preload-desc {
+    padding: 4px 12px 0;
+    font-size: 12px;
+    line-height: 1.6;
+    opacity: 0.55;
+}
+
+.preload-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 4px 12px 0;
 }
 
 .preload-alert {
