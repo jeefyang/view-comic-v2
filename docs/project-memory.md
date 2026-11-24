@@ -75,7 +75,8 @@
 - 组件：`src/views/reader/components/PageLoading.vue`（转圈 + 文案，`failed` 时 emit `retry`）；样式是**全局**的 `pageLoading.css`，因为瀑布流的页面容器是命令式创建的，拿不到 scoped 的 `data-v`。
 - 两个模式都有：`onload` 前图片透明（`opacity: 0` + 0.2s 过渡），占位层淡出移除；超过 3 秒文案切「网络较慢，仍在加载…」；失败自动重试 2 次（800ms / 2000ms，URL 追加 `?retry=` 避开失败缓存），仍失败显示「加载失败 · 点击重试」。
 - 占位层要 `z-index: 2`：瀑布流里它先于 `<img>` 挂进容器，不压一层会被图片盖住；容器必须 `position: relative`。
-- 慢网判定：`src/utils/network.ts` 的 `slowNetwork`（Network Information API，`slow-2g/2g/3g`；Safari / Firefox 没有该 API，一律按不慢处理）。慢网时瀑布流预加载 5→3、驻留 8→5、**不再发 `decodeSize`**（省一个 64KB Range 连接），单页预加载 5→2。
+- 慢网判定：`src/utils/network.ts` 的 `slowNetwork`（Network Information API，`slow-2g/2g/3g`；Safari / Firefox 没有该 API，一律按不慢处理）。慢网时瀑布流预加载最多 3、同时驻留最多 5，**不再发 `decodeSize`**（省一个 64KB Range 连接）；单页前后最多各预加载 1 页。预加载页数本身可在设置 → 阅读 → 「预加载」里调（瀑布流 1–20，默认 5；单页前后 0–5，默认 1，存 `readerSettings.waterfallPreload` / `pagedPreload`），慢网是在设置值的基础上再压到上面的上限。
+- 瀑布流的「预加载页数」同时决定同时驻留页数的下限（`displayLimit = max(8, 预加载页数)`），否则调大预加载会被 8 张的驻留上限吃掉；`preloadScreenCount`（3 屏）仍是「按高度提前加载」的另一条条件，别把两者混在一起。
 
 ### 缩略图
 - 地址：`/api/Thumbnail/{editUUID}/{width}/{相对路径}`，路径里可以带压缩包内条目（`img.zip/0001.jpg`），由 `server/utils/thumb.ts` 的 `splitZipEntry()` 拆。
@@ -126,9 +127,13 @@
 - 点击区域布局也走单布局增量：`tapZones/layouts.ts` 的 `patchLayout(name, zones?)` 取代了原来的整包 `putLayouts()`；`saveLayoutAs()` 传 `op: "set"`，`removeLayout()` 传 `op: "remove"`。
 
 ### 书架页
-- 滚动位置记忆在 `src/views/shelf/components/FileListItem2.vue`：`scrollMemo: Map<目录路径, { name, offset }>`，`snapshot()` 用 `VirtualList` 的 `getScrollState()` 拿首个可见项的**名字**（不用下标，目录重新加载后下标会变）+ 像素偏移存在当前路径下；`restore()` 用 `findIndex(item => item.name === memo.name)` 找回位置再 `restorePosition(index, offset)`，同名条目不存在就留在顶部。
+- 滚动位置记忆在 `src/views/shelf/components/FileListItem2.vue`：`scrollMemo: Map<书库+目录, { name, offset }>`，**放在普通 `<script>` 的模块作用域**（`script setup` 里声明会跟着组件实例一起销毁，刷新列表时书架页会换骨架屏、组件被卸载重挂）。`snapshot()` 用 `VirtualList` 的 `getScrollState()` 拿首个可见项的**名字**（不用下标，目录重新加载后下标会变）+ 像素偏移；`restore()` 用 `findIndex(item => item.name === memo.name)` 找回位置再 `restorePosition(index, offset)`，同名条目不存在就留在顶部。
+- key 用 `viewStore.shelfDataKey`（`editUUID::path`，由 `updateShelfFolder()` 成功后写入），不要用当前 `shelfPath`：切换目录时路径已经先变了，而列表还是旧目录的，按新路径记会把位置错记到子目录头上。`snapshot` 在 `shelfLoading` 变 true 时也要用 `flush: "sync"` 抢一次——`updateShelfFolder()` 紧接着就会清空列表。
+- **`useTemplateRef` 必须传模板里的 key**：`useTemplateRef<VirtualListInstance>("vListRef")`。历史上写的是 `useTemplateRef(null)`，编译后注册的是 `refs["null"]`，和模板的 `ref="vListRef"` 对不上，返回的只读 ref 永远为 null —— 表现就是「从阅读页回书架就回到顶部」，连右下角的「回到顶部 / 滚到底部」也一起失效（`vListRef.value?.xxx()` 全是空操作，不报错）。
 - 这个 watcher 必须写成 `watch(() => pathKey(), (next, prev) => snapshot(prev), { flush: "sync" })`：`updateShelfFolder()` 是「先清空列表再请求」，watcher 若走默认的异步时机，执行时 `getScrollState()` 已经拿不到东西了。
 - 恢复时机有四处：`watch(shelfFileList, restore, { flush: "post" })`、`onMounted` + `nextTick`、`onActivated`（从阅读页回来）、进目录前的 `toClick()` 里先 `snapshot()`。
+- `VirtualList.vue` 的 `getScrollState()` 不能直接读 `scrollTop`：keep-alive 把页面移出文档时浏览器会把它清零，所以缓存 `lastScrollTop`（`handleScroll` 里更新，`isConnected === false` 时忽略 scroll 事件），恢复时再用它算偏移。`updateItemSize()` 要忽略 `height <= 0` 的观测（移出文档/隐藏时 ResizeObserver 会报 0，写进位置表会把整张表算塌）；`initPositions()` 换列表时要一并把 `start/end/startOffset/lastScrollTop` 归零。
+- 书架页判断「当前列表是不是这个书库/目录的」只能看 `viewStore.shelfDataKey`（store、不持久化），**不能用组件内的临时变量**：从子目录进阅读页再返回时，`shelfView` 激活看到的是子目录路径，临时变量还停在上次由书架页自己发起的加载上，会误判成没加载过而整份重拉（列表闪骨架屏、位置全丢）。
 - `containerHeight` 用 `useElementSize(parentRef)` 的高度直接给，**不要再回到 `setTimeout` 量高 + `key = nanoid()` 重挂列表**的老写法（重挂会把滚动位置一起丢掉）。
 - 书架顶栏与列表状态都在 `src/views/shelf/shelfView.vue`：`libraryName` / `atRoot` 两个 computed 供面包屑与按钮禁用态使用；`shelfLoading` 为真时渲染 6 条 `n-skeleton`，只有「不在加载且列表为空」才显示 `n-empty`。
 - 排序 / 过滤 / 搜索词虽然一直在 `viewStore.save()` 的 `returnData` 里，但过去只有换书库、开书时才调 `save()` → 现在 `sortShelfFileList()` 末尾自己调一次 `save()`，改完偏好立刻生效并持久化。
@@ -155,7 +160,7 @@
 ## 已实现的功能面
 
 - 阅读器：瀑布流 / 单页翻页两种模式；自适应 / 宽度 / 高度 / 旋转四种适配（宽度与高度适应可拖动看超出部分）；双开页自动两屏（顺序随翻页方向）；页码指示、文件名栏、点击页码跳页、文件列表抽屉（三种排序 + 正反序）；单页支持 MP4/WebM 视频（静音循环、进视口自动播放、离开暂停、40px 播放/暂停按钮五位置默认右下；视频不参与双开页）
-- 加载体验：每页加载占位（转圈 / 慢网提示 / 失败点击重试，自动重试 2 次）；慢网（2G/3G）自动降低预加载与并发
+- 加载体验：每页加载占位（转圈 / 慢网提示 / 失败点击重试，自动重试 2 次）；慢网（2G/3G）自动降低预加载与并发；预加载页数可在设置 → 阅读 → 「预加载」里按瀑布流 / 单页分别调（慢网会再压上限）
 - 点击区域：可拖拽 / 八向改大小 / 2% 吸附；动作含翻页、切 UI、设置、跳页、返回书架 / 书库、切换适配方式；预设布局；布局上传到个人账户（`userConfig.tapZoneLayouts`，同名覆盖）
 - 设置页：阅读 / 翻页 / 账号 / 数据四个标签；阅读设置另有半屏抽屉
 - 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先；顶栏面包屑第一格是书库名（点它回**当前书库的根目录**，不跳书库页），其余是 `shelfPath` 各段，根目录不再额外显示「根目录」字样，此时回根 / 返上一级两个按钮置灰；加载时出骨架屏而非空态；按钮组右侧显示「共 N 项」；滚动位置按目录记忆（离开再回来、进出子目录都停在原位）；排序 / 过滤 / 搜索词会落盘
