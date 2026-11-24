@@ -138,6 +138,16 @@
 - 书架顶栏与列表状态都在 `src/views/shelf/shelfView.vue`：`libraryName` / `atRoot` 两个 computed 供面包屑与按钮禁用态使用；`shelfLoading` 为真时渲染 6 条 `n-skeleton`，只有「不在加载且列表为空」才显示 `n-empty`。
 - 排序 / 过滤 / 搜索词虽然一直在 `viewStore.save()` 的 `returnData` 里，但过去只有换书库、开书时才调 `save()` → 现在 `sortShelfFileList()` 末尾自己调一次 `save()`，改完偏好立刻生效并持久化。
 
+## 设置页（视觉与结构）
+
+- 视觉语言在 `src/assets/settings.css`（全局，`.st-*` 类）：墨黑 + 纸白 + 朱红，serif 标题 / sans 正文 / mono 数字；阅读页的「阅读设置」抽屉复用同一套类与 `src/views/settings/theme.ts` 的 naive 主题覆盖。
+- 骨架：桌面 280px 章节索引 + 760px 内容双栏，手机横向吸顶索引；索引禁用态表示「瀑布流下没有翻页设置」。
+- **`settingsView.vue` 根部的 `n-config-provider` 会自己生成一层 div**：必须给它 `settings-shell`（`flex:1` + `min-height:0`），否则 `.settings-page` 的 `height:100%` 会按内容撑到两千多像素，整页无法滚动。
+- 四个 tab 用 `defineAsyncComponent({ loadingComponent: SettingsPanelSkeleton, delay: 80 })`，首次切页不会出现空白。
+- 设置页被 keep-alive 缓存：地址栏 `?tab=` 变化要在 `settingsView.vue` 里单独 watch 同步，否则深链不会切页。
+- 边距试片 `PagePlate.vue`：真实像素按 `×0.28` 折算成百分比（间距 `×0.22`）；`splitSpread` 决定单页 / 双页，`direction=rtl` 用 `row-reverse` 换页序，滑块 hover / focus 时对应边高亮。
+- 历史 / 书签清理按钮接的是 `historyData.ts` 的 `clearHistory` / `clearBookmarks` + `flushHistory()`；调用前先 `loadHistory(true)`，否则未加载时清空是空操作。
+
 ## 约定与陷阱
 
 - **生产环境的 CSP 必须放行 `blob:`**：`server/index.ts` 只在 `NODE_ENV !== 'development'` 时才 `app.use(helmet(...))`，helmet 默认 CSP 是 `img-src 'self' data:`，而 `'self'` **不匹配 `blob:` 协议**；缩略图恰好是 `fetch → URL.createObjectURL → <img src="blob:...">`，于是打包版整面灰块、图位显示 `alt` 文字，开发版却完全正常（dev 的 HTML 由 Vite 中间件返回，helmet 只作用在 `/api` 响应上）。现在 `img-src` / `media-src` / `connect-src` 都显式带了 `blob:`，改动见 `server/index.ts`。
@@ -162,7 +172,7 @@
 - 阅读器：瀑布流 / 单页翻页两种模式；自适应 / 宽度 / 高度 / 旋转四种适配（宽度与高度适应可拖动看超出部分）；双开页自动两屏（顺序随翻页方向）；页码指示、文件名栏、点击页码跳页、文件列表抽屉（三种排序 + 正反序）；单页支持 MP4/WebM 视频（静音循环、进视口自动播放、离开暂停、40px 播放/暂停按钮五位置默认右下；视频不参与双开页）
 - 加载体验：每页加载占位（转圈 / 慢网提示 / 失败点击重试，自动重试 2 次）；慢网（2G/3G）自动降低预加载与并发；预加载页数可在设置 → 阅读 → 「预加载」里按瀑布流 / 单页分别调，不设硬上限、超出建议值时给提醒（慢网会再压上限）
 - 点击区域：可拖拽 / 八向改大小 / 2% 吸附；动作含翻页、切 UI、设置、跳页、返回书架 / 书库、切换适配方式；预设布局；布局上传到个人账户（`userConfig.tapZoneLayouts`，同名覆盖）
-- 设置页：阅读 / 翻页 / 账号 / 数据四个标签；阅读设置另有半屏抽屉
+- 设置页：阅读 / 翻页 / 账号 / 数据四个章节（桌面左栏索引、手机吸顶索引），阅读页的「阅读设置」抽屉复用同两页；边距有随滑块重画的双页试片，预加载超建议值时给醒目提醒，数据页有缓存用量条与逐项清理
 - 书架：搜索（含扩展名）、三种排序、正反序、文件 / 文件夹过滤、文件夹优先；顶栏面包屑第一格是书库名（点它回**当前书库的根目录**，不跳书库页），其余是 `shelfPath` 各段，根目录不再额外显示「根目录」字样，此时回根 / 返上一级两个按钮置灰；加载时出骨架屏而非空态；按钮组右侧显示「共 N 项」；滚动位置按目录记忆（离开再回来、进出子目录都停在原位）；排序 / 过滤 / 搜索词会落盘
 - 历史：导航栏「历史」页，两个标签页分别列历史与书签；记打开过的书（含页码 / 总页数）与打开过的书库，云端同步（4 秒防抖增量推送，离开阅读页立即推）；历史与书签卡片都显示「书库名 / 路径」，可单条删除、可清空
 - 书签：阅读页悬浮菜单与点击区域动作都能加 / 取消当前页书签，书签可点了直接跳到那本书那一页

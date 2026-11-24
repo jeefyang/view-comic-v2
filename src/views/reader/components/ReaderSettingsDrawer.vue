@@ -1,24 +1,30 @@
 <template>
     <n-drawer :show="modelShow" placement="bottom" :height="'68%'" @update:show="onUpdateShow">
         <n-drawer-content
-            title="阅读设置"
             closable
             :native-scrollbar="false"
-            body-content-style="padding: 8px 12px 16px 8px;"
+            body-content-style="padding: 0 16px 20px;"
         >
-            <div v-if="readingNow" class="current">
-                <div class="current-title">正在阅读</div>
-                <div class="current-path">{{ readingNow.path }}</div>
-                <div class="current-file">{{ readingNow.file }}</div>
-            </div>
-            <n-tabs v-model:value="tab" type="line" animated justify-content="space-evenly" pane-class="rs-pane">
-                <n-tab-pane name="reader" tab="阅读">
-                    <settings-reader />
-                </n-tab-pane>
-                <n-tab-pane v-if="!isWaterfall" name="paged" tab="翻页">
-                    <settings-paged />
-                </n-tab-pane>
-            </n-tabs>
+            <template #header>
+                <div class="st-scope rs-head">
+                    <span class="rs-eyebrow">READER</span>
+                    <span class="rs-title">阅读设置</span>
+                </div>
+            </template>
+            <n-config-provider :theme-overrides="settingsThemeOverrides">
+                <div v-if="readingNow" class="st-scope rs-current">
+                    <span class="rs-current-path">{{ readingNow.path }}</span>
+                    <strong class="rs-current-file">{{ readingNow.file }}</strong>
+                </div>
+                <n-tabs v-model:value="tab" type="line" animated justify-content="space-evenly" pane-class="rs-pane">
+                    <n-tab-pane name="reader" tab="阅读">
+                        <settings-reader />
+                    </n-tab-pane>
+                    <n-tab-pane v-if="!isWaterfall" name="paged" tab="翻页">
+                        <settings-paged />
+                    </n-tab-pane>
+                </n-tabs>
+            </n-config-provider>
         </n-drawer-content>
     </n-drawer>
 </template>
@@ -26,6 +32,7 @@
 <script lang="ts" setup>
 import { computed, defineAsyncComponent, ref, watch } from "vue";
 import { readerSettings } from "@/views/reader/readerSettings";
+import { settingsThemeOverrides } from "@/views/settings/theme";
 import { useViewStore } from "@/stores/view";
 import { normalizeBasePath } from "@/utils/fileUrl";
 
@@ -81,31 +88,49 @@ const onUpdateShow = (value: boolean) => {
 
 <style scoped lang="scss">
 :deep(.rs-pane) {
-    padding: 12px 4px 24px;
+    padding: 8px 0 24px;
 }
 
-.current {
-    margin: 0 4px 8px 0;
-    padding: 10px 12px;
-    border-radius: var(--border-radius);
-    background-color: var(--divider-color);
+.rs-head {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
 
-    .current-title {
-        font-size: 12px;
-        opacity: 0.55;
-        margin-bottom: 4px;
-    }
+.rs-eyebrow {
+    font-family: var(--st-font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    color: var(--st-graphite);
+}
 
-    .current-path {
-        font-size: 13px;
-        opacity: 0.8;
-        word-break: break-all;
-    }
+.rs-title {
+    font-family: var(--st-font-display);
+    font-size: 22px;
+    line-height: 1.2;
+    color: var(--st-paper);
+}
 
-    .current-file {
-        font-size: 15px;
-        margin-top: 2px;
-        word-break: break-all;
-    }
+.rs-current {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 6px 0 4px;
+    padding: 8px 0 10px;
+    border-bottom: 1px solid var(--st-line);
+}
+
+.rs-current-path {
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    color: var(--st-graphite);
+    word-break: break-all;
+}
+
+.rs-current-file {
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--st-paper);
+    word-break: break-all;
 }
 </style>

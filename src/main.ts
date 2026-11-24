@@ -1,6 +1,8 @@
 import './assets/main.css';
 // 统一滚动条外观（必须在 main.css 之后，才能盖住全局默认样式）
 import './assets/scrollbar.css';
+// 设置页的视觉语言：阅读页的「阅读设置」抽屉也复用这套类
+import './assets/settings.css';
 
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';

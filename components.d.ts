@@ -57,11 +57,8 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     ThumbImage: typeof import('./src/components/ThumbImage.vue')['default']
     VirtualList: typeof import('./src/components/VirtualList.vue')['default']
-    XBlockButton: typeof import('./src/components/XBlockButton.vue')['default']
     XDropdownInput: typeof import('./src/components/XDropdownInput.vue')['default']
     XLogin: typeof import('./src/components/XLogin.vue')['default']
-    XOptionItem: typeof import('./src/components/XOptionItem.vue')['default']
-    XSwitchItem: typeof import('./src/components/XSwitchItem.vue')['default']
   }
 }
 
@@ -112,9 +109,6 @@ declare global {
   const RouterView: typeof import('vue-router')['RouterView']
   const ThumbImage: typeof import('./src/components/ThumbImage.vue')['default']
   const VirtualList: typeof import('./src/components/VirtualList.vue')['default']
-  const XBlockButton: typeof import('./src/components/XBlockButton.vue')['default']
   const XDropdownInput: typeof import('./src/components/XDropdownInput.vue')['default']
   const XLogin: typeof import('./src/components/XLogin.vue')['default']
-  const XOptionItem: typeof import('./src/components/XOptionItem.vue')['default']
-  const XSwitchItem: typeof import('./src/components/XSwitchItem.vue')['default']
 }
