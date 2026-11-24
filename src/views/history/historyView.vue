@@ -1,80 +1,66 @@
 <template>
-    <div class="parent">
-        <n-tabs
-            v-model:value="tab"
-            type="line"
-            animated
-            class="tabs"
-            justify-content="space-evenly"
-            pane-class="tab-pane"
-        >
-            <n-tab-pane name="history" :tab="`历史 ${readHistory.length}`">
-                <div class="pane">
-                    <div class="pane-head">
-                        <span class="hint">点一下回到上次看到的那一页</span>
-                        <n-popconfirm @positive-click="onClearHistory">
-                            <template #trigger>
-                                <n-button text size="tiny" :disabled="!readHistory.length">清空历史</n-button>
-                            </template>
-                            历史会从云端一起删掉，确定吗？
-                        </n-popconfirm>
-                    </div>
-                    <div ref="historyWrap" class="list-wrap">
-                        <VirtualList
-                            v-if="readHistory.length"
-                            :list-data="readHistory"
-                            :container-height="historyHeight"
-                            :estimated-item-height="88"
-                        >
-                            <template #default="{ item }">
-                                <HistoryRow
-                                    v-if="item.kind === 'book'"
-                                    :item="item"
-                                    class="mb-2"
-                                    @open="openBook"
-                                    @remove="removeHistoryItem"
-                                />
-                                <LibraryRow
-                                    v-else
-                                    :item="item"
-                                    class="mb-2"
-                                    @open="openLibrary"
-                                    @remove="removeHistoryItem"
-                                />
-                            </template>
-                        </VirtualList>
-                        <n-empty v-else class="empty" description="还没有打开记录" />
-                    </div>
-                </div>
-            </n-tab-pane>
+    <div class="st-scope history-view">
+        <header class="st-page-head hist-head">
+            <div class="hist-head-row">
+                <h1 class="st-title">历史</h1>
+                <span class="hist-total">{{ tab === "history" ? readHistory.length : bookmarks.length }} 条</span>
+            </div>
+            <div class="hist-seg" role="tablist" aria-label="历史与书签">
+                <button class="hist-seg-btn" type="button" role="tab" :aria-selected="tab === 'history'" @click="tab = 'history'">
+                    历史 <b>{{ readHistory.length }}</b>
+                </button>
+                <button class="hist-seg-btn" type="button" role="tab" :aria-selected="tab === 'bookmark'" @click="tab = 'bookmark'">
+                    书签 <b>{{ bookmarks.length }}</b>
+                </button>
+            </div>
+        </header>
 
-            <n-tab-pane name="bookmark" :tab="`书签 ${bookmarks.length}`">
-                <div class="pane">
-                    <div class="pane-head">
-                        <span class="hint">阅读时点悬浮菜单里的「添加书签」</span>
-                        <n-popconfirm @positive-click="onClearBookmarks">
-                            <template #trigger>
-                                <n-button text size="tiny" :disabled="!bookmarks.length">清空书签</n-button>
-                            </template>
-                            书签会从云端一起删掉，确定吗？
-                        </n-popconfirm>
-                    </div>
-                    <div ref="bookmarkWrap" class="list-wrap">
-                        <VirtualList
-                            v-if="bookmarks.length"
-                            :list-data="bookmarks"
-                            :container-height="bookmarkHeight"
-                            :estimated-item-height="88"
-                        >
-                            <template #default="{ item }">
-                                <BookmarkRow :item="item" class="mb-2" @open="openBookmark" @remove="removeBookmark" />
-                            </template>
-                        </VirtualList>
-                        <n-empty v-else class="empty" description="还没有书签" />
-                    </div>
-                </div>
-            </n-tab-pane>
-        </n-tabs>
+        <section class="st-panel hist-panel">
+            <div class="hist-tools">
+                <span class="hist-hint">{{ tab === "history" ? "点一下回到上次看到的那一页" : "阅读时点悬浮菜单里的「添加书签」" }}</span>
+                <n-popconfirm v-if="tab === 'history'" @positive-click="onClearHistory">
+                    <template #trigger>
+                        <button class="st-btn st-btn--ghost" type="button" :disabled="!readHistory.length">清空历史</button>
+                    </template>
+                    历史会从云端一起删掉，确定吗？
+                </n-popconfirm>
+                <n-popconfirm v-else @positive-click="onClearBookmarks">
+                    <template #trigger>
+                        <button class="st-btn st-btn--ghost" type="button" :disabled="!bookmarks.length">清空书签</button>
+                    </template>
+                    书签会从云端一起删掉，确定吗？
+                </n-popconfirm>
+            </div>
+
+            <div v-show="tab === 'history'" ref="historyWrap" class="hist-list">
+                <VirtualList
+                    v-if="readHistory.length"
+                    :list-data="readHistory"
+                    :container-height="historyHeight"
+                    :estimated-item-height="76"
+                >
+                    <template #default="{ item }">
+                        <HistoryRow v-if="item.kind === 'book'" :item="item" @open="openBook" @remove="removeHistoryItem" />
+                        <LibraryRow v-else :item="item" @open="openLibrary" @remove="removeHistoryItem" />
+                    </template>
+                </VirtualList>
+                <div v-else class="st-empty hist-empty">还没有打开记录</div>
+            </div>
+
+            <div v-show="tab === 'bookmark'" ref="bookmarkWrap" class="hist-list">
+                <VirtualList
+                    v-if="bookmarks.length"
+                    :list-data="bookmarks"
+                    :container-height="bookmarkHeight"
+                    :estimated-item-height="76"
+                >
+                    <template #default="{ item }">
+                        <BookmarkRow :item="item" @open="openBookmark" @remove="removeBookmark" />
+                    </template>
+                </VirtualList>
+                <div v-else class="st-empty hist-empty">还没有书签</div>
+            </div>
+        </section>
     </div>
 </template>
 
@@ -196,67 +182,140 @@ onActivated(() => {
 });
 </script>
 
-<style scoped lang="scss">
-.parent {
-    height: 100%;
+<style scoped>
+/* 和历史列表一样是「定高 + 列表自己滚」，虚拟列表才有可用的高度 */
+.history-view {
+    flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 0 8px 8px;
-    box-sizing: border-box;
+    overflow: hidden;
+    background: var(--st-ink);
+    padding: 0 16px;
 }
 
-.tabs {
+@media (min-width: 1000px) {
+    .history-view {
+        width: 100%;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 32px 48px 24px;
+        background: transparent;
+    }
+}
+
+.hist-head {
+    flex: none;
+    padding: 18px 0 8px;
+}
+
+@media (min-width: 1000px) {
+    .hist-head {
+        padding: 0 0 14px;
+    }
+}
+
+.hist-head-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.hist-total {
+    flex: none;
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    color: var(--st-graphite);
+    white-space: nowrap;
+}
+
+.hist-seg {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.hist-seg-btn {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--st-line);
+    border-radius: var(--st-radius);
+    background: transparent;
+    color: var(--st-graphite);
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.hist-seg-btn:hover {
+    color: var(--st-paper);
+}
+
+.hist-seg-btn[aria-selected="true"] {
+    color: var(--st-paper);
+    border-color: var(--st-vermilion);
+    background: var(--st-vermilion-wash);
+}
+
+.hist-seg-btn b {
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--st-graphite);
+}
+
+.hist-seg-btn[aria-selected="true"] b {
+    color: var(--st-vermilion);
+}
+
+.hist-seg-btn:focus-visible {
+    outline: 2px solid var(--st-paper);
+    outline-offset: 2px;
+}
+
+.hist-panel {
     flex: 1;
-    min-height: 0;
-}
-
-:deep(.n-tabs-pane-wrapper) {
-    flex: 1;
-    min-height: 0;
-}
-
-:deep(.tab-pane) {
-    height: 100%;
-    padding-top: 8px;
-    box-sizing: border-box;
-}
-
-.pane {
-    height: 100%;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    padding: 8px 0 0;
+    border-top: 1px solid var(--st-line);
 }
 
-.pane-head {
+.hist-tools {
     flex: none;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
-    font-size: 12px;
+    gap: 12px;
+    padding-bottom: 6px;
 }
 
-.hint {
-    opacity: 0.55;
+.hist-hint {
+    min-width: 0;
+    font-size: 12px;
+    color: var(--st-graphite);
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
 }
 
-.list-wrap {
+.hist-list {
     flex: 1;
     min-height: 0;
     overflow: hidden;
+    border-top: 1px solid var(--st-line);
 }
 
-.empty {
+.hist-empty {
     height: 100%;
     display: flex;
-    flex-direction: column;
-    justify-content: center;
     align-items: center;
+    justify-content: center;
 }
 </style>

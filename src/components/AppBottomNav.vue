@@ -38,7 +38,8 @@ const isActive = (path: string): boolean => {
 .app-nav {
     flex: none;
     display: flex;
-    height: 60px;
+    height: calc(52px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
     border-top: 1px solid var(--st-line);
     background: var(--st-ink);
 }
@@ -50,7 +51,7 @@ const isActive = (path: string): boolean => {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 2px;
     min-height: 44px;
     border: 0;
     background: transparent;
@@ -91,6 +92,7 @@ const isActive = (path: string): boolean => {
 @media (min-width: 1000px) {
     .app-nav {
         justify-content: center;
+        height: calc(56px + env(safe-area-inset-bottom, 0px));
     }
 
     .app-nav-item {

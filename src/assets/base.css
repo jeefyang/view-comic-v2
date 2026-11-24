@@ -60,6 +60,8 @@
 
 body {
   height: 100vh;
+  /* 手机浏览器地址栏收起/展开时 100vh 会跳动，dvh 跟着可视区走 */
+  height: 100dvh;
   overflow: hidden;
   color: var(--color-text);
   background: var(--color-background);

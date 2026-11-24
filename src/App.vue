@@ -95,11 +95,16 @@ configStore.isInit = true;
 </script>
 
 <style>
+/* n-config-provider / n-dialog-provider 会各包一层 div，所以不能用 flex:1 撑满；
+   直接按视口定高，底部导航作为 flex 子项吃掉固定的 52px */
 #main {
-    height: calc(100vh - 60px - 2rem);
+    height: 100vh;
+    height: 100dvh;
     width: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    /* 内层滚到底时不要把滚动链传给 body，避免手机上的回弹与下拉刷新 */
+    overscroll-behavior: none;
 }
 </style>

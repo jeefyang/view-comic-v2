@@ -120,10 +120,10 @@ const metaTitle = computed(() => {
     position: relative;
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     width: 100%;
-    min-height: 76px;
-    padding: 8px 10px 8px 8px;
+    min-height: 68px;
+    padding: 6px 8px 6px 6px;
     border: 0;
     border-bottom: 1px solid var(--st-line);
     background: transparent;
@@ -142,8 +142,8 @@ const metaTitle = computed(() => {
 .shelf-item:hover::before {
     content: "";
     position: absolute;
-    top: 8px;
-    bottom: 8px;
+    top: 6px;
+    bottom: 6px;
     left: 0;
     width: 2px;
     background: var(--st-vermilion);
@@ -160,8 +160,8 @@ const metaTitle = computed(() => {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 60px;
-    height: 60px;
+    width: 52px;
+    height: 52px;
     border: 1px solid var(--st-line);
     background: var(--st-well);
     color: var(--st-graphite);
@@ -195,7 +195,7 @@ const metaTitle = computed(() => {
 }
 
 .shelf-name {
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1.35;
     color: var(--st-paper);
     white-space: nowrap;
@@ -211,5 +211,28 @@ const metaTitle = computed(() => {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+/* 桌面一行更舒展，缩略图也更大 */
+@media (min-width: 700px) {
+    .shelf-item {
+        gap: 14px;
+        min-height: 76px;
+        padding: 8px 10px 8px 8px;
+    }
+
+    .shelf-item:hover::before {
+        top: 8px;
+        bottom: 8px;
+    }
+
+    .shelf-thumb {
+        width: 60px;
+        height: 60px;
+    }
+
+    .shelf-name {
+        font-size: 16px;
+    }
 }
 </style>

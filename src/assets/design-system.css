@@ -39,6 +39,11 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+html {
+    /* 移动端点按不要闪一片系统高亮，反馈交给 :hover / :active */
+    -webkit-tap-highlight-color: transparent;
+}
+
 .st-scope {
     color: var(--st-paper);
     font-family: var(--st-font-body);
@@ -84,6 +89,7 @@ body {
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    padding: 0 16px;
 }
 
 .settings-page::-webkit-scrollbar {
@@ -102,6 +108,7 @@ body {
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     -ms-overflow-style: none;
+    padding: 0 16px 24px;
 }
 
 .st-page::-webkit-scrollbar {
@@ -121,7 +128,7 @@ body {
 }
 
 .st-page-head {
-    padding: 20px 20px 8px;
+    padding: 18px 0 8px;
 }
 
 .st-title {
@@ -149,6 +156,7 @@ body {
     z-index: 6;
     display: flex;
     gap: 4px;
+    margin: 0 -16px;
     padding: 6px 16px 10px;
     overflow-x: auto;
     background: var(--st-ink);
@@ -232,7 +240,7 @@ body {
     width: 100%;
     max-width: 780px;
     margin: 0 auto;
-    padding: 8px 20px 48px;
+    padding: 8px 0 48px;
 }
 
 /* ------------------------------ 分组 ------------------------------ */
@@ -695,6 +703,13 @@ body {
     border-color: transparent;
     color: var(--st-paper);
     background: var(--st-graphite-wash);
+}
+
+/* 触屏上把无边框按钮补到 44px，桌面保持紧凑 */
+@media (pointer: coarse) {
+    .st-btn--ghost {
+        min-height: 44px;
+    }
 }
 
 .st-btn--danger {
@@ -1285,6 +1300,129 @@ body {
     margin-top: 12px;
 }
 
+/* ------------------------------ 媒体行（历史 / 书签） ------------------------------ */
+
+.hist-item {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--st-line);
+    transition: background-color 0.15s ease;
+}
+
+.hist-item:hover {
+    background: var(--st-graphite-wash);
+}
+
+.hist-open {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 72px;
+    padding: 8px 4px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.hist-open:focus-visible {
+    outline: 2px solid var(--st-paper);
+    outline-offset: -2px;
+}
+
+.hist-thumb {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    border: 1px solid var(--st-line);
+    background: var(--st-well);
+    color: var(--st-graphite);
+    overflow: hidden;
+}
+
+.hist-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hist-title {
+    font-size: 15px;
+    line-height: 1.35;
+    color: var(--st-paper);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.hist-path {
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--st-graphite);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.hist-meta {
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--st-graphite);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.hist-del {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: 2px;
+    border: 0;
+    background: transparent;
+    color: var(--st-graphite);
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.hist-del:hover {
+    color: var(--st-vermilion);
+}
+
+.hist-del:focus-visible {
+    outline: 2px solid var(--st-paper);
+    outline-offset: -2px;
+}
+
+@media (min-width: 700px) {
+    .hist-open {
+        gap: 14px;
+        min-height: 76px;
+    }
+
+    .hist-thumb {
+        width: 56px;
+        height: 56px;
+    }
+
+    .hist-title {
+        font-size: 16px;
+    }
+}
+
 /* ------------------------------ 缓存用量 ------------------------------ */
 
 .st-meter {
@@ -1468,6 +1606,7 @@ body {
         align-self: start;
         flex-direction: column;
         gap: 2px;
+        margin: 0;
         padding: 14px 0 0;
         overflow: visible;
         border-bottom: 0;

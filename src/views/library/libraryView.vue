@@ -315,9 +315,9 @@ onMounted(() => {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 16px;
-    min-height: 76px;
-    padding: 14px 8px 14px 12px;
+    gap: 12px;
+    min-height: 66px;
+    padding: 12px 8px 12px 6px;
     border: 0;
     background: transparent;
     color: inherit;
@@ -361,7 +361,7 @@ onMounted(() => {
 
 .lib-name {
     font-family: var(--st-font-display);
-    font-size: 20px;
+    font-size: 18px;
     line-height: 1.3;
     color: var(--st-paper);
     word-break: break-all;
@@ -403,5 +403,18 @@ onMounted(() => {
 
 .lib-empty-btn {
     margin-top: 14px;
+}
+
+/* 桌面一行更舒展 */
+@media (min-width: 700px) {
+    .lib-open {
+        gap: 16px;
+        min-height: 76px;
+        padding: 14px 8px 14px 12px;
+    }
+
+    .lib-name {
+        font-size: 20px;
+    }
 }
 </style>

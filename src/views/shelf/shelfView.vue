@@ -7,7 +7,10 @@
     </div>
     <div v-else class="st-scope shelf-view">
         <header class="st-page-head shelf-head">
-            <h1 class="st-title">{{ libraryName }}</h1>
+            <div class="shelf-head-row">
+                <h1 class="st-title">{{ libraryName }}</h1>
+                <span class="shelf-count">共 {{ viewStore.shelfFileList.length }} 项</span>
+            </div>
             <nav class="shelf-crumbs" aria-label="目录路径">
                 <button class="shelf-crumb" type="button" :disabled="atRoot" @click="toHome">{{ libraryName }}</button>
                 <template v-for="(item, index) in viewStore.shelfPath" :key="index">
@@ -44,7 +47,6 @@
                     </n-dropdown>
                     <button class="st-btn st-btn--ghost" type="button" :disabled="viewStore.shelfLoading" @click="toUpdate">刷新</button>
                 </div>
-                <span class="shelf-count">共 {{ viewStore.shelfFileList.length }} 项</span>
             </div>
 
             <div v-if="viewStore.shelfLoading" class="shelf-skeleton" aria-hidden="true">
@@ -273,6 +275,7 @@ onActivated(() => {
     flex-direction: column;
     overflow: hidden;
     background: var(--st-ink);
+    padding: 0 16px;
 }
 
 @media (min-width: 1000px) {
@@ -287,7 +290,14 @@ onActivated(() => {
 
 .shelf-head {
     flex: none;
-    padding: 20px 20px 10px;
+    padding: 18px 0 8px;
+}
+
+.shelf-head-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
 }
 
 @media (min-width: 1000px) {
@@ -364,7 +374,7 @@ onActivated(() => {
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 12px 20px 8px;
+    padding: 10px 0 8px;
     border-top: 1px solid var(--st-line);
 }
 
@@ -379,8 +389,8 @@ onActivated(() => {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px 12px;
-    padding-bottom: 10px;
+    gap: 6px 12px;
+    padding-bottom: 8px;
 }
 
 .shelf-search {
@@ -390,14 +400,22 @@ onActivated(() => {
     min-width: 0;
 }
 
+/* 手机上排序 / 过滤 / 刷新保持一行，放不下就横向滑，不折成第三行 */
 .shelf-filters {
+    flex: 1 0 auto;
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.shelf-filters::-webkit-scrollbar {
+    display: none;
 }
 
 .shelf-count {
-    margin-left: auto;
+    flex: none;
     font-family: var(--st-font-mono);
     font-size: 11px;
     color: var(--st-graphite);
@@ -452,8 +470,8 @@ onActivated(() => {
 /* 书架右下角的快捷滚动按钮，留出底部 60px 导航栏的空间 */
 .scroll-fabs {
     position: fixed;
-    right: 14px;
-    bottom: 76px;
+    right: 12px;
+    bottom: 64px;
     z-index: 10;
     display: flex;
     flex-direction: column;
@@ -464,7 +482,7 @@ onActivated(() => {
 @media (min-width: 1000px) {
     .scroll-fabs {
         right: calc((100vw - 860px) / 2 + 8px);
-        bottom: 84px;
+        bottom: 72px;
     }
 }
 </style>
