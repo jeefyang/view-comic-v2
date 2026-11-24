@@ -48,6 +48,11 @@ const positions = ref<PositionCache[]>([]);
 const start = ref<number>(0);
 const end = ref<number>(0);
 const startOffset = ref<number>(0);
+/**
+ * 最后一次真实滚动位置。页面被 keep-alive 移出文档时浏览器会把 scrollTop 清零，
+ * 快照必须仍能拿到用户离开时的位置，否则「从阅读页回到书架」会停在顶部。
+ */
+let lastScrollTop = 0;
 
 const itemRefs = new Map<number, HTMLElement>();
 let resizeObserver: ResizeObserver | null = null;
@@ -62,11 +67,22 @@ const initPositions = () => {
         top: index * props.estimatedItemHeight,
         bottom: (index + 1) * props.estimatedItemHeight
     }));
+    // 同一份容器里换列表（排序 / 过滤）时保持当前滚动位置；新挂载的容器 scrollTop 是 0
+    const container = listContainer.value;
+    lastScrollTop = container?.isConnected ? container.scrollTop : 0;
+    start.value = binarySearch(positions.value, lastScrollTop);
+    const visibleCount = Math.ceil(props.containerHeight / props.estimatedItemHeight);
+    end.value = start.value + visibleCount;
+    updateOffset();
 };
 
 const updateItemSize = (index: number, height: number) => {
     const oldHeight = positions.value[index]?.height;
     if (oldHeight === undefined) {
+        return;
+    }
+    // 页面被移出文档 / 藏起来时 ResizeObserver 会报 0 尺寸；把它写进缓存会把整张位置表算塌
+    if (height <= 0) {
         return;
     }
     const dValue = height - oldHeight;
@@ -151,7 +167,11 @@ const binarySearch = (list: PositionCache[], value: number): number => {
 
 const handleScroll = () => {
     if (!listContainer.value) return;
+    // 被 keep-alive 移出文档时浏览器会把 scrollTop 清零，可能还附带一次 scroll 事件；
+    // 那不是用户操作，忽略它，否则记下的位置和 start 会被一起冲掉
+    if (!listContainer.value.isConnected) return;
     const scrollTop = listContainer.value.scrollTop;
+    lastScrollTop = scrollTop;
 
     start.value = binarySearch(positions.value, scrollTop);
     const visibleCount = Math.ceil(props.containerHeight / props.estimatedItemHeight);
@@ -184,9 +204,13 @@ const scrollToIndex = async (index: number) => {
 // 2. 获取当前滚动状态（防刷新记忆）
 const getScrollState = () => {
     if (!listContainer.value || positions.value.length === 0) return null;
-    const scrollTop = listContainer.value.scrollTop;
-    const offset = scrollTop - positions.value[start.value].top;
-    return { index: start.value, offset };
+    // 移出文档后 scrollTop 已经不是用户离开时的值，改用最后一次真实滚动位置
+    const scrollTop = listContainer.value.isConnected ? listContainer.value.scrollTop : lastScrollTop;
+    const index = Math.min(start.value, positions.value.length - 1);
+    const position = positions.value[index];
+    if (!position) return null;
+    const offset = scrollTop - position.top;
+    return { index, offset };
 };
 
 // 3. 恢复滚动状态

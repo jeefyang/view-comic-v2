@@ -34,6 +34,12 @@ export const useViewStore = defineStore('view', () => {
     const shelfJumpName = ref(<string>"");
     const shelfScrollName = ref(<string>"");
     const shelfLoading = ref(false);
+    /**
+     * 当前 `shelfFileList` 属于哪个「书库 + 目录」，由 `updateShelfFolder()` 成功后写入。
+     * 书架页靠它判断「列表是不是已经是这个目录的」——不能只在组件里记，从子目录进阅读页
+     * 再返回时父组件那次激活会看到新路径，误当成换了目录而整份重拉。
+     */
+    const shelfDataKey = ref(<string>"");
     const comicFileList = ref({} as ComicFileListType);
     /**
      * 当前 shelfPath 属于哪个书库。换书库时要清空书架路径，
@@ -98,21 +104,27 @@ export const useViewStore = defineStore('view', () => {
     const updateShelfFolder = async (isSort = true) => {
         if (!curLibrary.value.editUUID) {
             shelfFolder.value = undefined;
+            shelfDataKey.value = "";
             return;
         }
+        const editUUID = curLibrary.value.editUUID;
+        const path = shelfPath.value.join('/');
+        const dataKey = `${editUUID}::${path}`;
         shelfLoading.value = true;
         // 先清空旧列表：目录切换后旧条目若还留着，它们会带着新的 shelfPath 去要缩略图，必定 404
         shelfFileList.value = [];
         shelfFolder.value = undefined;
         shelfScrollName.value = "";
-        const res = await viewFetch.request("folder", { editUUID: curLibrary.value.editUUID!, path: shelfPath.value.join('/') });
+        const res = await viewFetch.request("folder", { editUUID, path });
         shelfLoading.value = false;
         if (res.code != 200) {
             shelfFolder.value = undefined;
+            shelfDataKey.value = "";
 
             return res;
         }
         shelfFolder.value = res.data;
+        shelfDataKey.value = dataKey;
         if (!isSort) {
             return;
         }
@@ -215,6 +227,7 @@ export const useViewStore = defineStore('view', () => {
             shelfPath.value = [];
             shelfFileList.value = [];
             shelfFolder.value = undefined;
+            shelfDataKey.value = "";
             shelfScrollName.value = "";
         }
         shelfLibraryUUID.value = item.uuid;
@@ -304,6 +317,7 @@ export const useViewStore = defineStore('view', () => {
         shelfFolder,
         updateShelfFolder,
         shelfFileList,
+        shelfDataKey,
         sortShelfFileList,
         shelfJumpName,
         getShelfJump,

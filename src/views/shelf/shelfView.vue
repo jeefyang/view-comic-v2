@@ -212,15 +212,12 @@ const scrollToBottom = () => {
     void listRef.value?.scrollToBottom();
 };
 
-/** 上次成功拉过列表的「书库 + 目录」，用来判断进入书架时还要不要重新请求 */
-let loadedKey = "";
-
+/** 当前列表对应的「书库 + 目录」，与 store 里的 shelfDataKey 比较判断要不要重新请求 */
 const folderKey = () =>
     `${viewStore.curLibrary.editUUID || ""}::${(viewStore.shelfPath || []).join("/")}`;
 
 const updateList = async () => {
     await viewStore.updateShelfFolder();
-    loadedKey = folderKey();
 };
 
 const checkLibrary = async () => {
@@ -252,10 +249,10 @@ const checkLibrary = async () => {
         }
         return;
     }
-    if (isEmpty.value || !viewStore.shelfFileList.length || loadedKey !== folderKey()) {
-        // 进入书架时只要「当前没有列表」或「列表不是这个书库/目录的」就拉一次。
-        // 以前只在 isEmpty（换书库）时拉，导致同一书库再次进来时列表是空的、
-        // 必须手点刷新才出来；服务端刚重启过的场景也表现为「列表没查出来」。
+    if (viewStore.shelfDataKey !== folderKey()) {
+        // 列表不是当前这个书库/目录的就拉一次。用 store 里的 shelfDataKey 判断，而不是
+        // 组件内的临时变量：从子目录进阅读页再返回时，组件激活看到的已经是新路径，
+        // 临时变量还停在上一次由书架页自己发起的加载上，会误判成没加载过而整份重拉。
         await updateList();
     }
     isEmpty.value = false;

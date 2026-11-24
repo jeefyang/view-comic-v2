@@ -8,6 +8,16 @@
     </div>
 </template>
 
+<script lang="ts">
+/**
+ * 每个目录记一份滚动位置：{ 第一个可见项的名字, 项内偏移 }。
+ * 必须放在模块作用域（普通 script 块）而不是 script setup 里：刷新列表时书架页会换成
+ * 骨架屏、本组件被卸载重建，位置记忆不能跟着实例一起丢。只放在内存里 ——
+ * 目录重新加载后下标可能变，用名字定位更稳。
+ */
+const scrollMemo = new Map<string, { name: string; offset: number }>();
+</script>
+
 <script setup lang="ts">
 import VirtualList, { type VirtualListInstance } from "@/components/VirtualList.vue";
 import { useViewStore } from "@/stores/view";
@@ -20,19 +30,22 @@ import router from "@/router";
 const viewStore = useViewStore();
 const containerHeight = ref(<number>10);
 const parentRef = ref<HTMLElement>();
-const vListRef = useTemplateRef<VirtualListInstance>(null);
+// key 必须和模板里的 ref="vListRef" 一致；传 null 时拿到的是永远为空的只读 ref
+const vListRef = useTemplateRef<VirtualListInstance>("vListRef");
 
 const msg = useMessage();
 
-/**
- * 每个目录记一份滚动位置：{ 第一个可见项的名字, 项内偏移 }。
- * 只放在内存里 —— 目录重新加载后下标可能变，用名字定位更稳。
- */
-const scrollMemo = new Map<string, { name: string; offset: number }>();
 const pathKey = (path = viewStore.shelfPath) => path.join("/");
 
-/** 把当前滚动位置记到某个路径下（key 省略时用当前路径） */
-const snapshot = (key = pathKey()) => {
+/**
+ * 把当前滚动位置记到「此刻列表所属的目录」下。
+ * 用 store 的 shelfDataKey 而不是当前 shelfPath：切换目录时路径已经先变了，
+ * 但列表还是旧目录的，按新路径记会把这个位置错记到子目录头上。
+ */
+const snapshot = (key = viewStore.shelfDataKey) => {
+    if (!key) {
+        return;
+    }
     const state = vListRef.value?.getScrollState();
     if (!state) {
         return;
@@ -60,8 +73,11 @@ const scrollToBottom = async () => {
 
 defineExpose({ scrollToTop, scrollToBottom, snapshot });
 
-/** 回到某个路径时恢复滚动位置（找不到同名条目就留在顶部） */
-const restore = async (key = pathKey()) => {
+/** 回到某个目录时恢复滚动位置（找不到同名条目就留在顶部） */
+const restore = async (key = viewStore.shelfDataKey) => {
+    if (!key) {
+        return;
+    }
     const memo = scrollMemo.get(key);
     if (!memo) {
         return;
@@ -92,6 +108,18 @@ watch(
     (_next, prev) => {
         if (prev !== undefined) {
             snapshot(prev);
+        }
+    },
+    { flush: "sync" }
+);
+
+// 刷新同一个目录（刷新按钮 / 返回书架时发现需要重拉）：store 紧接着就会清空列表并卸载本组件，
+// 必须在这一刻先把位置记下来，否则重建后的列表只能从顶部开始
+watch(
+    () => viewStore.shelfLoading,
+    (loading) => {
+        if (loading) {
+            snapshot();
         }
     },
     { flush: "sync" }
