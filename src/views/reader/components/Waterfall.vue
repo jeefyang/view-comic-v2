@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
 import { useViewStore } from "@/stores/view";
-import { clampWaterfallPreload, readerSettings } from "@/views/reader/readerSettings";
+import { normalizeWaterfallPreload, readerSettings } from "@/views/reader/readerSettings";
 import { readerPages } from "@/views/reader/readerPages";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
@@ -706,8 +706,8 @@ const setDisplayPage = (page: WaterfallPageType) => {
     const oldPageList = [...displayPageList];
     let height = 0;
     const maxScreenHeight = screenHeight * preloadScreenCount;
-    // 预加载页数来自设置；同时驻留页数不能比它少，否则调大预加载也不会生效
-    const configuredPreload = clampWaterfallPreload(readerSettings.waterfallPreload);
+    // 预加载页数来自设置（不设硬上限）；同时驻留页数不能比它少，否则调大预加载也不会生效
+    const configuredPreload = normalizeWaterfallPreload(readerSettings.waterfallPreload);
     const preloadLimit = slowNetwork.value ? Math.min(SLOW_PRELOAD_PAGE_COUNT, configuredPreload) : configuredPreload;
     // 慢网时少驻留几张，先保证当前页能加载出来
     const displayLimit = Math.max(slowNetwork.value ? SLOW_DISPLAY_PAGE_COUNT : BASE_DISPLAY_PAGE_COUNT, preloadLimit);

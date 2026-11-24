@@ -10,17 +10,21 @@ const STORAGE_KEY = "readerSettings";
 /** settingsVersion 2：视频播放按钮默认从左上移到右下，旧数据要一次性迁移 */
 const SETTINGS_VERSION = 2;
 
-/** 预加载页数的可调范围：太小起不到作用，太大在手机上会占满内存 */
-export const WATERFALL_PRELOAD = { min: 1, max: 20, fallback: 5 };
-export const PAGED_PRELOAD = { min: 0, max: 5, fallback: 1 };
+/**
+ * 预加载页数：不设硬上限，只给默认值与「建议上限」。
+ * 超过建议值不算错，但会同时解码很多大图，设置页会用醒目提醒告知风险。
+ */
+export const WATERFALL_PRELOAD = { min: 1, fallback: 5, recommendedMax: 10 };
+export const PAGED_PRELOAD = { min: 0, fallback: 1, recommendedMax: 3 };
 
-const clampInt = (value: unknown, min: number, max: number, fallback: number) => {
+/** 只做整数化与下限兜底，不截断上限：用户愿意调多大就多大 */
+const normalizeInt = (value: unknown, min: number, fallback: number) => {
     const n = Math.round(Number(value));
-    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+    return Number.isFinite(n) ? Math.max(min, n) : fallback;
 };
 
-export const clampWaterfallPreload = (value: unknown) => clampInt(value, WATERFALL_PRELOAD.min, WATERFALL_PRELOAD.max, WATERFALL_PRELOAD.fallback);
-export const clampPagedPreload = (value: unknown) => clampInt(value, PAGED_PRELOAD.min, PAGED_PRELOAD.max, PAGED_PRELOAD.fallback);
+export const normalizeWaterfallPreload = (value: unknown) => normalizeInt(value, WATERFALL_PRELOAD.min, WATERFALL_PRELOAD.fallback);
+export const normalizePagedPreload = (value: unknown) => normalizeInt(value, PAGED_PRELOAD.min, PAGED_PRELOAD.fallback);
 
 const defaults = {
     /** 阅读模式：瀑布流 / 单页翻页 */
@@ -78,10 +82,10 @@ const load = () => {
             readerSettings.videoPlayButtonPosition = obj.videoPlayButtonPosition;
         }
         if ("waterfallPreload" in obj) {
-            readerSettings.waterfallPreload = clampWaterfallPreload(obj.waterfallPreload);
+            readerSettings.waterfallPreload = normalizeWaterfallPreload(obj.waterfallPreload);
         }
         if ("pagedPreload" in obj) {
-            readerSettings.pagedPreload = clampPagedPreload(obj.pagedPreload);
+            readerSettings.pagedPreload = normalizePagedPreload(obj.pagedPreload);
         }
         // 旧版本默认是左上，会压住返回按钮；只迁移旧数据，不覆盖新版用户的主动选择
         const storedVersion = typeof obj.settingsVersion === "number" ? obj.settingsVersion : 0;

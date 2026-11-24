@@ -98,7 +98,7 @@ import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMoun
 import { useViewStore } from "@/stores/view";
 import { useConfigStore } from "@/stores/config";
 import { readerPages } from "@/views/reader/readerPages";
-import { clampPagedPreload, readerSettings } from "@/views/reader/readerSettings";
+import { normalizePagedPreload, readerSettings } from "@/views/reader/readerSettings";
 import type { ReaderModeHandle } from "@/views/reader/modes/types";
 import { computeFit } from "@/views/reader/modes/fitStrategies";
 import { decodeSize } from "@/utils/decodeSize";
@@ -472,9 +472,9 @@ const imgStyle = computed(() => {
 
 /** 已预热的图片，用 src 占位即可让浏览器缓存住 */
 const preloaded = new Map<string, HTMLImageElement>();
-/** 前后各预加载的页数来自设置；慢网时两边最多各一张，别跟当前页抢带宽 */
+/** 前后各预加载的页数来自设置（不设硬上限）；慢网时两边最多各一张，别跟当前页抢带宽 */
 const preloadSpan = () => {
-    const configured = clampPagedPreload(readerSettings.pagedPreload);
+    const configured = normalizePagedPreload(readerSettings.pagedPreload);
     return slowNetwork.value ? Math.min(configured, 1) : configured;
 };
 /** 预取缓存的上限：前后各 span 张，多出来的按最早进来先释放 */

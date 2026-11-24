@@ -63,32 +63,34 @@
             <div class="section-title ml-3 mb-1">预加载</div>
             <div class="spacing-row">
                 <span class="spacing-label">瀑布流</span>
-                <n-slider
-                    class="spacing-slider"
+                <n-input-number
+                    size="small"
+                    style="width: 120px"
                     :value="readerSettings.waterfallPreload"
                     :min="WATERFALL_PRELOAD.min"
-                    :max="WATERFALL_PRELOAD.max"
                     :step="1"
-                    :tooltip="false"
-                    @update:value="(v: number) => (readerSettings.waterfallPreload = v)"
+                    @update:value="(v: number | null) => (readerSettings.waterfallPreload = normalizeWaterfallPreload(v))"
                 />
-                <span class="spacing-value">{{ readerSettings.waterfallPreload }} 页</span>
+                <span class="spacing-suffix">页，同时驻留页数不少于它</span>
             </div>
             <div class="spacing-row">
                 <span class="spacing-label">单页前后</span>
-                <n-slider
-                    class="spacing-slider"
+                <n-input-number
+                    size="small"
+                    style="width: 120px"
                     :value="readerSettings.pagedPreload"
                     :min="PAGED_PRELOAD.min"
-                    :max="PAGED_PRELOAD.max"
                     :step="1"
-                    :tooltip="false"
-                    @update:value="(v: number) => (readerSettings.pagedPreload = v)"
+                    @update:value="(v: number | null) => (readerSettings.pagedPreload = normalizePagedPreload(v))"
                 />
-                <span class="spacing-value">{{ readerSettings.pagedPreload }} 页</span>
+                <span class="spacing-suffix">页，前后各预加载 N 页</span>
             </div>
+            <n-alert v-if="preloadHeavy" type="warning" show-icon class="preload-alert">
+                预加载页数偏大：会同时解码更多大图，手机可能卡顿或内存吃紧。建议瀑布流不超过
+                {{ WATERFALL_PRELOAD.recommendedMax }} 页、单页前后不超过 {{ PAGED_PRELOAD.recommendedMax }} 页。
+            </n-alert>
             <div class="spacing-tip">
-                <span>瀑布流是提前加载的页数（同时驻留页数不会少于它）；单页是当前页前后各预加载的页数。弱网时自动调低。</span>
+                <span>页数越大滚动越顺，占用内存与带宽也越多；弱网时会自动调低。</span>
                 <n-button size="tiny" quaternary @click="resetPreload">恢复默认</n-button>
             </div>
         </div>
@@ -136,7 +138,7 @@ import XOptionItem from "@/components/XOptionItem.vue";
 import { readerFeatures } from "@/views/reader/readerFeatures";
 import { useConfigStore } from "@/stores/config";
 import { computed } from "vue";
-import { readerSettings, WATERFALL_PRELOAD, PAGED_PRELOAD, type PageDirectionType, type ReaderModeType } from "@/views/reader/readerSettings";
+import { readerSettings, WATERFALL_PRELOAD, PAGED_PRELOAD, normalizeWaterfallPreload, normalizePagedPreload, type PageDirectionType, type ReaderModeType } from "@/views/reader/readerSettings";
 
 const configStore = useConfigStore();
 
@@ -148,6 +150,11 @@ const setSpacing = (key: "paddingTop" | "paddingBottom" | "paddingLeft" | "paddi
     configStore[key] = value;
     configStore.saveReaderSpacing();
 };
+
+/** 超过建议值时给醒目提醒；不硬性禁止，用户可以按自己的设备情况调 */
+const preloadHeavy = computed(
+    () => readerSettings.waterfallPreload > WATERFALL_PRELOAD.recommendedMax || readerSettings.pagedPreload > PAGED_PRELOAD.recommendedMax
+);
 
 /** 只把预加载两项恢复默认，不动阅读模式等其它选择 */
 const resetPreload = () => {
@@ -199,6 +206,15 @@ const directionOptions: { value: PageDirectionType; label: string; description: 
     font-size: 12px;
     opacity: 0.55;
     font-variant-numeric: tabular-nums;
+}
+
+.spacing-suffix {
+    font-size: 12px;
+    opacity: 0.55;
+}
+
+.preload-alert {
+    margin: 8px 12px 0;
 }
 
 .spacing-tip {
