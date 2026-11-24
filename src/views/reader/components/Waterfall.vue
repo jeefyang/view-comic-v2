@@ -13,7 +13,7 @@
 <script setup lang="ts">
 import { useConfigStore } from "@/stores/config";
 import { useViewStore } from "@/stores/view";
-import { readerSettings } from "@/views/reader/readerSettings";
+import { clampWaterfallPreload, readerSettings } from "@/views/reader/readerSettings";
 import { readerPages } from "@/views/reader/readerPages";
 import { decodeSize } from "@/utils/decodeSize";
 import { buildFileUrl } from "@/utils/fileUrl";
@@ -54,14 +54,14 @@ let screenHeight = 0;
 let sortPageList: WaterfallPageType[] = [];
 let displayPageList: WaterfallPageType[] = [];
 
-/** 预加载页数 */
-const preloadPageCount = 5;
 /** 预加载屏幕数量 */
 const preloadScreenCount = 3;
 
 /** 慢网时少占几个并发连接：预加载页数与同时驻留的图片都调小 */
-const slowPreloadPageCount = 3;
-const slowMaxDisplayPageCount = 5;
+const SLOW_PRELOAD_PAGE_COUNT = 3;
+const SLOW_DISPLAY_PAGE_COUNT = 5;
+/** 同时驻留的图片页数基线：一张 2000×3000 的图解压后约 24MB，手机上必须限量 */
+const BASE_DISPLAY_PAGE_COUNT = 8;
 /** 加载超过这个时间还没完成，就把提示换成「网络较慢」 */
 const SLOW_HINT_DELAY = 3000;
 /** 失败后的自动重试间隔（毫秒），次数即数组长度 */
@@ -76,8 +76,6 @@ let curBottomHeight = 0;
 let topObserver: IntersectionObserver | undefined;
 let bottomObserver: IntersectionObserver | undefined;
 
-/** 同时驻留的图片页上限：一张 2000×3000 的图解压后约 24MB，手机上必须限量 */
-const maxDisplayPageCount = 8;
 /** 每页尺寸探测请求的取消句柄，页被回收时用来中止还没返回的请求 */
 const sizeAbortMap = new WeakMap<WaterfallPageType, AbortController>();
 /** 已经拿到真实尺寸的页，避免 decodeSize 与 img.onload 重复布局 */
@@ -708,10 +706,12 @@ const setDisplayPage = (page: WaterfallPageType) => {
     const oldPageList = [...displayPageList];
     let height = 0;
     const maxScreenHeight = screenHeight * preloadScreenCount;
+    // 预加载页数来自设置；同时驻留页数不能比它少，否则调大预加载也不会生效
+    const configuredPreload = clampWaterfallPreload(readerSettings.waterfallPreload);
+    const preloadLimit = slowNetwork.value ? Math.min(SLOW_PRELOAD_PAGE_COUNT, configuredPreload) : configuredPreload;
     // 慢网时少驻留几张，先保证当前页能加载出来
-    const displayLimit = slowNetwork.value ? slowMaxDisplayPageCount : maxDisplayPageCount;
-    const preloadLimit = slowNetwork.value ? slowPreloadPageCount : preloadPageCount;
-    // 同时驻留的 <img> 不超过 maxDisplayPageCount 个，手机上不会因为解码位图过多被杀页
+    const displayLimit = Math.max(slowNetwork.value ? SLOW_DISPLAY_PAGE_COUNT : BASE_DISPLAY_PAGE_COUNT, preloadLimit);
+    // 同时驻留的 <img> 不超过 displayLimit 个，手机上不会因为解码位图过多被杀页
     for (let i = start; i < sortPageList.length && newPageList.length < displayLimit; i++) {
         const item = sortPageList[i];
         height += item.displayHeight;

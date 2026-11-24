@@ -10,6 +10,18 @@ const STORAGE_KEY = "readerSettings";
 /** settingsVersion 2：视频播放按钮默认从左上移到右下，旧数据要一次性迁移 */
 const SETTINGS_VERSION = 2;
 
+/** 预加载页数的可调范围：太小起不到作用，太大在手机上会占满内存 */
+export const WATERFALL_PRELOAD = { min: 1, max: 20, fallback: 5 };
+export const PAGED_PRELOAD = { min: 0, max: 5, fallback: 1 };
+
+const clampInt = (value: unknown, min: number, max: number, fallback: number) => {
+    const n = Math.round(Number(value));
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+export const clampWaterfallPreload = (value: unknown) => clampInt(value, WATERFALL_PRELOAD.min, WATERFALL_PRELOAD.max, WATERFALL_PRELOAD.fallback);
+export const clampPagedPreload = (value: unknown) => clampInt(value, PAGED_PRELOAD.min, PAGED_PRELOAD.max, PAGED_PRELOAD.fallback);
+
 const defaults = {
     /** 阅读模式：瀑布流 / 单页翻页 */
     mode: "waterfall" as ReaderModeType,
@@ -21,6 +33,10 @@ const defaults = {
     splitSpread: false,
     /** 单页视频页播放/暂停按钮的位置 */
     videoPlayButtonPosition: "bottom-right" as VideoPlayPositionType,
+    /** 瀑布流预加载页数：当前页之后提前加载多少页（同时也是同时驻留页数的下限） */
+    waterfallPreload: WATERFALL_PRELOAD.fallback,
+    /** 单页模式在前后各预加载多少页 */
+    pagedPreload: PAGED_PRELOAD.fallback,
     /** 设置结构版本，用于旧数据迁移 */
     settingsVersion: SETTINGS_VERSION
 };
@@ -60,6 +76,12 @@ const load = () => {
         }
         if (isVideoPlayPosition(obj.videoPlayButtonPosition)) {
             readerSettings.videoPlayButtonPosition = obj.videoPlayButtonPosition;
+        }
+        if ("waterfallPreload" in obj) {
+            readerSettings.waterfallPreload = clampWaterfallPreload(obj.waterfallPreload);
+        }
+        if ("pagedPreload" in obj) {
+            readerSettings.pagedPreload = clampPagedPreload(obj.pagedPreload);
         }
         // 旧版本默认是左上，会压住返回按钮；只迁移旧数据，不覆盖新版用户的主动选择
         const storedVersion = typeof obj.settingsVersion === "number" ? obj.settingsVersion : 0;

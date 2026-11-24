@@ -60,6 +60,39 @@
             </div>
         </div>
         <div class="section">
+            <div class="section-title ml-3 mb-1">预加载</div>
+            <div class="spacing-row">
+                <span class="spacing-label">瀑布流</span>
+                <n-slider
+                    class="spacing-slider"
+                    :value="readerSettings.waterfallPreload"
+                    :min="WATERFALL_PRELOAD.min"
+                    :max="WATERFALL_PRELOAD.max"
+                    :step="1"
+                    :tooltip="false"
+                    @update:value="(v: number) => (readerSettings.waterfallPreload = v)"
+                />
+                <span class="spacing-value">{{ readerSettings.waterfallPreload }} 页</span>
+            </div>
+            <div class="spacing-row">
+                <span class="spacing-label">单页前后</span>
+                <n-slider
+                    class="spacing-slider"
+                    :value="readerSettings.pagedPreload"
+                    :min="PAGED_PRELOAD.min"
+                    :max="PAGED_PRELOAD.max"
+                    :step="1"
+                    :tooltip="false"
+                    @update:value="(v: number) => (readerSettings.pagedPreload = v)"
+                />
+                <span class="spacing-value">{{ readerSettings.pagedPreload }} 页</span>
+            </div>
+            <div class="spacing-tip">
+                <span>瀑布流是提前加载的页数（同时驻留页数不会少于它）；单页是当前页前后各预加载的页数。弱网时自动调低。</span>
+                <n-button size="tiny" quaternary @click="resetPreload">恢复默认</n-button>
+            </div>
+        </div>
+        <div class="section">
             <div class="section-title ml-3 mb-1">双开页</div>
             <XSwitchItem
                 v-model="readerSettings.splitSpread"
@@ -103,7 +136,7 @@ import XOptionItem from "@/components/XOptionItem.vue";
 import { readerFeatures } from "@/views/reader/readerFeatures";
 import { useConfigStore } from "@/stores/config";
 import { computed } from "vue";
-import { readerSettings, type PageDirectionType, type ReaderModeType } from "@/views/reader/readerSettings";
+import { readerSettings, WATERFALL_PRELOAD, PAGED_PRELOAD, type PageDirectionType, type ReaderModeType } from "@/views/reader/readerSettings";
 
 const configStore = useConfigStore();
 
@@ -114,6 +147,12 @@ const isWaterfall = computed(() => readerSettings.mode === "waterfall");
 const setSpacing = (key: "paddingTop" | "paddingBottom" | "paddingLeft" | "paddingRight" | "imageGap", value: number) => {
     configStore[key] = value;
     configStore.saveReaderSpacing();
+};
+
+/** 只把预加载两项恢复默认，不动阅读模式等其它选择 */
+const resetPreload = () => {
+    readerSettings.waterfallPreload = WATERFALL_PRELOAD.fallback;
+    readerSettings.pagedPreload = PAGED_PRELOAD.fallback;
 };
 
 const modeOptions: { value: ReaderModeType; label: string; description: string }[] = [

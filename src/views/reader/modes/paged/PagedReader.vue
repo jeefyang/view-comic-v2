@@ -98,7 +98,7 @@ import { computed, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMoun
 import { useViewStore } from "@/stores/view";
 import { useConfigStore } from "@/stores/config";
 import { readerPages } from "@/views/reader/readerPages";
-import { readerSettings } from "@/views/reader/readerSettings";
+import { clampPagedPreload, readerSettings } from "@/views/reader/readerSettings";
 import type { ReaderModeHandle } from "@/views/reader/modes/types";
 import { computeFit } from "@/views/reader/modes/fitStrategies";
 import { decodeSize } from "@/utils/decodeSize";
@@ -472,9 +472,13 @@ const imgStyle = computed(() => {
 
 /** 已预热的图片，用 src 占位即可让浏览器缓存住 */
 const preloaded = new Map<string, HTMLImageElement>();
-const MAX_PRELOAD = 5;
-/** 慢网时只预热前后各一张，别跟当前页抢带宽 */
-const maxPreload = () => (slowNetwork.value ? 2 : MAX_PRELOAD);
+/** 前后各预加载的页数来自设置；慢网时两边最多各一张，别跟当前页抢带宽 */
+const preloadSpan = () => {
+    const configured = clampPagedPreload(readerSettings.pagedPreload);
+    return slowNetwork.value ? Math.min(configured, 1) : configured;
+};
+/** 预取缓存的上限：前后各 span 张，多出来的按最早进来先释放 */
+const maxPreload = () => preloadSpan() * 2;
 
 const ensureSize = async (target: typeof page.value) => {
     // 视频的尺寸来自 loadedmetadata，不能用图片的 Range + imageSize 探测
@@ -517,7 +521,23 @@ const releasePreloaded = () => {
 };
 
 const preloadNearby = async () => {
-    const targets = [index.value - 1, index.value + 1].filter(i => i >= 0 && i < total.value);
+    const span = preloadSpan();
+    // 设置调小后，旧的多余预热立即释放
+    while (preloaded.size > maxPreload()) {
+        releasePreloaded();
+    }
+    if (span === 0) {
+        return;
+    }
+    const targets: number[] = [];
+    for (let d = 1; d <= span; d++) {
+        if (index.value - d >= 0) {
+            targets.push(index.value - d);
+        }
+        if (index.value + d < total.value) {
+            targets.push(index.value + d);
+        }
+    }
     for (const i of targets) {
         const target = list.value[i];
         if (!target || target.extType === "video") {
