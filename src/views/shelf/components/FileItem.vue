@@ -1,37 +1,26 @@
 <template>
-    <n-card content-style="padding: 0.5rem;" @click="emits('click', props.item)">
-        <n-flex align="center" style="height: 100%">
-            <div class="thumb-box">
-                <!-- 文件夹 / 图片 / 压缩包 / 电子书 / 视频用缩略图；其它类型留图标 -->
-                <thumb-image v-if="thumbPath" :edit-uuid="editUUID" :path="thumbPath" :alt="props.item.name">
-                    <n-icon :color="iconColor" size="40">
-                        <component :is="icon" />
-                    </n-icon>
-                </thumb-image>
-                <n-icon v-else :color="iconColor" size="40">
-                    <component :is="icon" />
-                </n-icon>
-                <!-- 类型角标：文件夹 / 压缩包只看缩略图容易和图片混淆 -->
-                <div class="thumb-kind" :class="`is-${kind}`">{{ kindLabel }}</div>
-            </div>
-
-            <n-flex vertical style="flex: 1; min-width: 0; gap: 4px">
-                <div class="name" :title="props.item.name">{{ props.item.name }}</div>
-                <div class="meta" :title="metaTitle">{{ metaText }}</div>
-            </n-flex>
-        </n-flex>
-    </n-card>
+    <button class="shelf-item" :class="{ 'is-folder': props.item.isDir }" type="button" @click="emits('click', props.item)">
+        <span class="shelf-thumb">
+            <thumb-image v-if="thumbPath" :edit-uuid="editUUID" :path="thumbPath" :alt="props.item.name">
+                <n-icon :size="26"><component :is="icon" /></n-icon>
+            </thumb-image>
+            <n-icon v-else :size="26"><component :is="icon" /></n-icon>
+            <span class="shelf-kind">{{ kindLabel }}</span>
+        </span>
+        <span class="shelf-main">
+            <span class="shelf-name" :title="props.item.name">{{ props.item.name }}</span>
+            <span class="shelf-meta" :title="metaTitle">{{ metaText }}</span>
+        </span>
+    </button>
 </template>
 <script setup lang="ts">
 import { computed } from "vue";
-import { useThemeVars } from "naive-ui";
 import { FolderFilled, FileCopyRound } from "@vicons/material";
 import { BookFilled, FileZipFilled, FileImageFilled } from "@vicons/antd";
 import { ResizeVideo24Filled } from "@vicons/fluent";
 import ThumbImage from "@/components/ThumbImage.vue";
 import { useViewStore, type ShelfFileItem } from "@/stores/view";
 
-const themeVars = useThemeVars();
 const viewStore = useViewStore();
 
 const props = defineProps<{
@@ -69,12 +58,6 @@ const icon = computed(() => {
     }
     return FileCopyRound;
 });
-
-const iconColor = computed(() => (
-    props.item.isDir || props.item.extType === "video"
-        ? themeVars.value.warningColor
-        : themeVars.value.infoColor
-));
 
 /** 书架上的类型区分：文件夹 / 压缩包 / 电子书 / 视频 / 图片 / 其它文件 */
 type ItemKind = "folder" | "zip" | "book" | "video" | "image" | "file";
@@ -133,70 +116,100 @@ const metaTitle = computed(() => {
 </script>
 
 <style scoped>
-.name {
-    font-size: 0.95rem;
-    line-height: 1.3;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.meta {
-    font-size: 0.7rem;
-    opacity: 0.55;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: default;
-}
-
-.thumb-box {
+.shelf-item {
     position: relative;
-    width: 5rem;
-    height: 5rem;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 76px;
+    padding: 8px 10px 8px 8px;
+    border: 0;
+    border-bottom: 1px solid var(--st-line);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.shelf-item:hover {
+    background: var(--st-graphite-wash);
+}
+
+/* 朱红只在指向时出现，静态列表保持安静 */
+.shelf-item:hover::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: 0;
+    width: 2px;
+    background: var(--st-vermilion);
+}
+
+.shelf-item:focus-visible {
+    outline: 2px solid var(--st-paper);
+    outline-offset: -2px;
+}
+
+.shelf-thumb {
+    position: relative;
+    flex: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 6px;
-    background-color: rgba(127, 127, 127, 0.08);
+    width: 60px;
+    height: 60px;
+    border: 1px solid var(--st-line);
+    background: var(--st-well);
+    color: var(--st-graphite);
     overflow: hidden;
 }
 
-/* 角标贴左上角，颜色按类型区分 */
-.thumb-kind {
+.shelf-item.is-folder .shelf-thumb {
+    color: var(--st-paper);
+}
+
+.shelf-kind {
     position: absolute;
-    top: 0;
-    left: 0;
-    padding: 0 5px;
-    font-size: 10px;
-    line-height: 15px;
-    color: #fff;
-    border-bottom-right-radius: 6px;
-    letter-spacing: 0.02em;
+    right: 0;
+    bottom: 0;
+    padding: 0 3px;
+    border-top: 1px solid var(--st-line);
+    border-left: 1px solid var(--st-line);
+    background: var(--st-ink);
+    font-family: var(--st-font-mono);
+    font-size: 9px;
+    line-height: 13px;
+    color: var(--st-graphite);
     pointer-events: none;
 }
 
-.thumb-kind.is-folder {
-    background-color: #e0a12c;
+.shelf-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
 }
 
-.thumb-kind.is-zip {
-    background-color: #3f7ede;
+.shelf-name {
+    font-size: 16px;
+    line-height: 1.35;
+    color: var(--st-paper);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.thumb-kind.is-book {
-    background-color: #c1683a;
-}
-
-.thumb-kind.is-video {
-    background-color: #b355d6;
-}
-
-.thumb-kind.is-image {
-    background-color: #35a06a;
-}
-
-.thumb-kind.is-file {
-    background-color: #7a8391;
+.shelf-meta {
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--st-graphite);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 </style>

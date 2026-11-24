@@ -1,76 +1,78 @@
 <template>
-    <template v-if="isEmpty">
-        <n-flex style="width: 100%; height: 100%" justify="center" align="center">
-            <n-empty description="书架是空的" size="huge"> </n-empty>
-        </n-flex>
-    </template>
-    <template v-else>
-        <n-flex vertical style="height: 100%">
-            <n-flex align="center" style="gap: 0" :style="{ border: `1px solid ${themeVars.borderColor}` }">
-                <n-button quaternary :disabled="atRoot" title="回到根目录" @click="toHome">
-                    <n-icon>
-                        <HomeOutline></HomeOutline>
-                    </n-icon>
-                </n-button>
-                <n-flex style="flex: 1; flex-wrap: nowrap; overflow: auto; scrollbar-width: none">
-                    <n-breadcrumb>
-                        <n-breadcrumb-item @click="toHome">{{ libraryName }}</n-breadcrumb-item>
-                        <n-breadcrumb-item v-for="(item, index) in viewStore.shelfPath" :key="index" @click="toSelectPath(index)">{{ item }}</n-breadcrumb-item>
-                    </n-breadcrumb>
-                </n-flex>
-                <n-button quaternary :disabled="atRoot" title="返回上一级" @click="toBack">
-                    <n-icon> <ArrowBack></ArrowBack> </n-icon>
-                </n-button>
-            </n-flex>
+    <div v-if="isEmpty" class="st-scope shelf-view">
+        <div class="st-empty shelf-empty">
+            <p>书架是空的</p>
+            <button class="st-btn" type="button" @click="$router.push('/library')">去书库挑一本</button>
+        </div>
+    </div>
+    <div v-else class="st-scope shelf-view">
+        <header class="st-page-head shelf-head">
+            <h1 class="st-title">{{ libraryName }}</h1>
+            <nav class="shelf-crumbs" aria-label="目录路径">
+                <button class="shelf-crumb" type="button" :disabled="atRoot" @click="toHome">{{ libraryName }}</button>
+                <template v-for="(item, index) in viewStore.shelfPath" :key="index">
+                    <span class="shelf-crumb-sep" aria-hidden="true">/</span>
+                    <button class="shelf-crumb" type="button" @click="toSelectPath(index)">{{ item }}</button>
+                </template>
+                <span class="shelf-crumb-spacer"></span>
+                <button class="shelf-crumb shelf-crumb--back" type="button" :disabled="atRoot" @click="toBack">上一级</button>
+            </nav>
+        </header>
 
-            <n-input-group>
-                <n-button type="primary" @click="runSearch"> 搜索 </n-button>
-                <n-input v-model:value="viewStore.shelfSearchKey" :style="{ width: '100%' }" placeholder="请输入关键字" clearable @keyup.enter="runSearch" />
-            </n-input-group>
-            <n-flex align="center" style="gap: 8px">
-                <n-button-group>
-                    <n-button type="success" @click="toggleSortValue">{{ viewStore.shelfSortValue == 1 ? "正序" : "反序" }}</n-button>
+        <section class="st-panel shelf-panel">
+            <div class="shelf-tools">
+                <div class="shelf-search">
+                    <input
+                        v-model="viewStore.shelfSearchKey"
+                        class="st-input"
+                        type="search"
+                        placeholder="输入关键字，回车筛选"
+                        aria-label="搜索书架"
+                        @keyup.enter="runSearch"
+                    />
+                    <button class="st-btn" type="button" @click="runSearch">搜索</button>
+                </div>
+                <div class="shelf-filters">
+                    <button class="st-btn st-btn--ghost" type="button" @click="toggleSortValue">
+                        {{ viewStore.shelfSortValue == 1 ? "正序" : "反序" }}
+                    </button>
                     <n-dropdown trigger="click" :options="sortNameOptions" @select="toSelectSortType">
-                        <n-button type="info">{{ sortNameList[viewStore.shelfSortType] }}</n-button>
+                        <button class="st-btn st-btn--ghost" type="button">{{ sortNameList[viewStore.shelfSortType] }}</button>
                     </n-dropdown>
                     <n-dropdown trigger="click" :options="includeOptions" @select="toSelectIncludeType">
-                        <n-button type="warning">{{ includeList[viewStore.shelfIncludeType] }}</n-button>
+                        <button class="st-btn st-btn--ghost" type="button">{{ includeList[viewStore.shelfIncludeType] }}</button>
                     </n-dropdown>
-                    <n-button @click="toUpdate" :loading="viewStore.shelfLoading">刷新</n-button>
-                </n-button-group>
-                <div class="list-count">共 {{ viewStore.shelfFileList.length }} 项</div>
-            </n-flex>
-            <n-flex v-if="viewStore.shelfLoading" vertical style="flex: 1; min-height: 0; overflow: hidden">
-                <n-skeleton v-for="i in 6" :key="i" height="76px" :sharp="false" style="margin-bottom: 8px; border-radius: 6px" />
-            </n-flex>
-            <n-flex v-else-if="viewStore.shelfFileList.length" vertical style="flex: 1; min-height: 0">
-                <FileListItem2 ref="listRef"></FileListItem2>
-                <div class="scroll-fabs">
-                    <n-button circle secondary size="medium" title="回到顶部" @click="scrollToTop">
-                        <template #icon>
-                            <n-icon><ArrowUpOutline></ArrowUpOutline></n-icon>
-                        </template>
-                    </n-button>
-                    <n-button circle secondary size="medium" title="滚到底部" @click="scrollToBottom">
-                        <template #icon>
-                            <n-icon><ArrowDownOutline></ArrowDownOutline></n-icon>
-                        </template>
-                    </n-button>
+                    <button class="st-btn st-btn--ghost" type="button" :disabled="viewStore.shelfLoading" @click="toUpdate">刷新</button>
                 </div>
-            </n-flex>
-            <n-flex v-else style="flex: 1" justify="center" align="center">
-                <n-empty :description="emptyTip"></n-empty>
-            </n-flex>
-        </n-flex>
-    </template>
+                <span class="shelf-count">共 {{ viewStore.shelfFileList.length }} 项</span>
+            </div>
+
+            <div v-if="viewStore.shelfLoading" class="shelf-skeleton" aria-hidden="true">
+                <span v-for="i in 6" :key="i" class="st-skeleton"></span>
+            </div>
+            <div v-else-if="viewStore.shelfFileList.length" class="shelf-list">
+                <FileListItem2 ref="listRef"></FileListItem2>
+            </div>
+            <div v-else class="st-empty">{{ emptyTip }}</div>
+        </section>
+
+        <div class="scroll-fabs">
+            <button class="st-icon-btn" type="button" title="回到顶部" @click="scrollToTop">
+                <n-icon :size="18"><ArrowUpOutline /></n-icon>
+            </button>
+            <button class="st-icon-btn" type="button" title="滚到底部" @click="scrollToBottom">
+                <n-icon :size="18"><ArrowDownOutline /></n-icon>
+            </button>
+        </div>
+    </div>
 </template>
 <script setup lang="ts">
 import { useViewStore } from "@/stores/view";
 import { viewFetch } from "@/utils/jFetch";
-import { useMessage, useThemeVars } from "naive-ui";
+import { useMessage } from "naive-ui";
 import { computed, onActivated, onBeforeUnmount, onDeactivated, ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import { ArrowBack, ArrowDownOutline, ArrowUpOutline, HomeOutline } from "@vicons/ionicons5";
+import { ArrowDownOutline, ArrowUpOutline } from "@vicons/ionicons5";
 // import FileListItem from "./components/FileListItem.vue";
 import FileListItem2 from "./components/FileListItem2.vue";
 
@@ -78,7 +80,6 @@ defineOptions({
     name: "shelfView"
 });
 
-const themeVars = useThemeVars();
 const viewStore = useViewStore();
 const router = useRouter();
 
@@ -264,11 +265,188 @@ onActivated(() => {
 </script>
 
 <style scoped>
-.list-count {
-    font-size: 0.72rem;
-    opacity: 0.5;
-    margin-left: auto;
+/* 书架不整页滚动：列表自己滚（虚拟列表 + 位置记忆），所以这里是定高 flex 列 */
+.shelf-view {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--st-ink);
+}
+
+@media (min-width: 1000px) {
+    .shelf-view {
+        width: 100%;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 32px 48px 24px;
+        background: transparent;
+    }
+}
+
+.shelf-head {
+    flex: none;
+    padding: 20px 20px 10px;
+}
+
+@media (min-width: 1000px) {
+    .shelf-head {
+        padding: 0 0 14px;
+    }
+}
+
+.shelf-crumbs {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.shelf-crumbs::-webkit-scrollbar {
+    display: none;
+}
+
+.shelf-crumb {
+    flex: none;
+    min-height: 44px;
+    padding: 0 6px;
+    border: 0;
+    background: transparent;
+    color: var(--st-graphite);
+    font-family: inherit;
+    font-size: 13px;
     white-space: nowrap;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.shelf-crumb:hover {
+    color: var(--st-paper);
+}
+
+.shelf-crumb:disabled {
+    color: var(--st-paper);
+    cursor: default;
+}
+
+.shelf-crumb:focus-visible {
+    outline: 2px solid var(--st-paper);
+    outline-offset: 0;
+}
+
+.shelf-crumb-sep {
+    flex: none;
+    font-family: var(--st-font-mono);
+    font-size: 12px;
+    color: var(--st-line);
+}
+
+.shelf-crumb-spacer {
+    flex: 1;
+    min-width: 12px;
+}
+
+.shelf-crumb--back {
+    border: 1px solid var(--st-line);
+    border-radius: var(--st-radius);
+    padding: 0 12px;
+    color: var(--st-paper);
+}
+
+.shelf-crumb--back:disabled {
+    opacity: 0.4;
+}
+
+.shelf-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px 20px 8px;
+    border-top: 1px solid var(--st-line);
+}
+
+@media (min-width: 1000px) {
+    .shelf-panel {
+        padding: 12px 0 0;
+    }
+}
+
+.shelf-tools {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+    padding-bottom: 10px;
+}
+
+.shelf-search {
+    flex: 1 1 260px;
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+}
+
+.shelf-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.shelf-count {
+    margin-left: auto;
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    color: var(--st-graphite);
+    white-space: nowrap;
+}
+
+.shelf-list {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-top: 1px solid var(--st-line);
+}
+
+.shelf-skeleton {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 14px;
+    overflow: hidden;
+}
+
+.shelf-skeleton .st-skeleton:nth-child(4n + 1) {
+    width: 64%;
+}
+
+.shelf-skeleton .st-skeleton:nth-child(4n + 2) {
+    width: 81%;
+}
+
+.shelf-skeleton .st-skeleton:nth-child(4n + 3) {
+    width: 49%;
+}
+
+.shelf-skeleton .st-skeleton:nth-child(4n) {
+    width: 72%;
+}
+
+.shelf-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 16px;
+    padding: 0 20px;
+    font-size: 15px;
 }
 
 /* 书架右下角的快捷滚动按钮，留出底部 60px 导航栏的空间 */
@@ -280,5 +458,13 @@ onActivated(() => {
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+/* 桌面上贴到内容栏右缘，别漂在视口最右边 */
+@media (min-width: 1000px) {
+    .scroll-fabs {
+        right: calc((100vw - 860px) / 2 + 8px);
+        bottom: 84px;
+    }
 }
 </style>

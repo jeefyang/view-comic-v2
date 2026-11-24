@@ -1,8 +1,8 @@
 <template>
     <div style="flex: 1" ref="parentRef">
-        <VirtualList ref="vListRef" :list-data="viewStore.shelfFileList" :containerHeight="containerHeight" :estimated-item-height="96">
+        <VirtualList ref="vListRef" :list-data="viewStore.shelfFileList" :containerHeight="containerHeight" :estimated-item-height="88">
             <template #default="{ item }">
-                <FileItem :item="item" class="mb-2" @click="toClick"></FileItem>
+                <FileItem :item="item" @click="toClick"></FileItem>
             </template>
         </VirtualList>
     </div>

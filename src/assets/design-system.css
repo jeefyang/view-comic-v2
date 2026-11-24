@@ -1,10 +1,10 @@
 /*
- * 设置页的视觉语言：印刷工坊的夜间控制台。
+ * 印刷工坊：全局视觉语言。
  * 墨黑 + 纸白 + 朱红，细线代替卡片阴影；数字一律等宽。
- * 这些类在设置页与阅读页的半屏「阅读设置」抽屉里共用，所以放在全局。
+ * token 挂在 :root，书库 / 书架 / 设置 / 阅读设置抽屉共用同一套变量与类。
  */
 
-.st-scope {
+:root {
     --st-ink: #101014;
     --st-well: #17171b;
     --st-line: #2b2b33;
@@ -26,7 +26,12 @@
     --st-space: 8px;
     --st-radius: 2px;
     --st-radius-pill: 999px;
+}
 
+/* 所有页面共用；.st-scope 只负责把同一套排版重新声明在局部容器里 */
+html,
+body {
+    background: var(--st-ink);
     color: var(--st-paper);
     font-family: var(--st-font-body);
     font-size: 16px;
@@ -34,7 +39,15 @@
     -webkit-font-smoothing: antialiased;
 }
 
-.st-scope ::selection {
+.st-scope {
+    color: var(--st-paper);
+    font-family: var(--st-font-body);
+    font-size: 16px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+}
+
+::selection {
     background: var(--st-vermilion);
     color: var(--st-ink);
 }
@@ -79,16 +92,36 @@
     display: none;
 }
 
-.st-page-head {
-    padding: 20px 20px 8px;
+/* 书库 / 书架用的通用页容器：单列、自己滚动，桌面端居中留白 */
+.st-page {
+    background: var(--st-ink);
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
-.st-eyebrow {
-    font-family: var(--st-font-mono);
-    font-size: 11px;
-    letter-spacing: 0.18em;
-    color: var(--st-graphite);
-    text-transform: uppercase;
+.st-page::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+@media (min-width: 1000px) {
+    .st-page {
+        width: 100%;
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 32px 48px 64px;
+        background: transparent;
+    }
+}
+
+.st-page-head {
+    padding: 20px 20px 8px;
 }
 
 .st-title {
@@ -521,6 +554,84 @@
     font-family: var(--st-font-mono);
     font-size: 12px;
     color: var(--st-graphite);
+}
+
+/* 文本输入：与 .st-num 同一套边线，只是内容左对齐 */
+.st-input {
+    width: 100%;
+    height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--st-line);
+    border-radius: var(--st-radius);
+    background: var(--st-well);
+    color: var(--st-paper);
+    font-family: inherit;
+    font-size: 16px;
+}
+
+.st-input::placeholder {
+    color: var(--st-graphite);
+}
+
+.st-input:hover {
+    border-color: var(--st-graphite);
+}
+
+.st-input:focus-visible {
+    outline: 2px solid var(--st-vermilion);
+    outline-offset: 1px;
+    border-color: var(--st-vermilion);
+}
+
+/* 方形图标按钮，44×44，和 .st-btn 同一套焦点与禁用规则 */
+.st-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid var(--st-line);
+    border-radius: var(--st-radius);
+    background: transparent;
+    color: var(--st-graphite);
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.st-icon-btn:hover {
+    color: var(--st-paper);
+    border-color: var(--st-graphite);
+}
+
+.st-icon-btn:focus-visible {
+    outline: 2px solid var(--st-paper);
+    outline-offset: 2px;
+}
+
+.st-icon-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+/* 等宽小标签：分组名、类型角标 */
+.st-tag {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 6px;
+    border: 1px solid var(--st-line);
+    border-radius: var(--st-radius);
+    font-family: var(--st-font-mono);
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    color: var(--st-graphite);
+    white-space: nowrap;
+}
+
+.st-tag--accent {
+    border-color: rgba(226, 80, 58, 0.5);
+    color: var(--st-vermilion);
 }
 
 /* ------------------------------ 按钮 ------------------------------ */

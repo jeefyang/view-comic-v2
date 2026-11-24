@@ -1,70 +1,56 @@
 <template>
-    <div class="library-view">
-        <!-- 顶部工具条 -->
-        <div class="toolbar">
-            <div class="toolbar-title">
-                书库
-                <n-tag size="small" round :bordered="false">{{ viewStore.libraryList.length }}</n-tag>
+    <div class="st-scope st-page library-view">
+        <header class="st-page-head">
+            <div class="lib-head-row">
+                <h1 class="st-title">书库</h1>
+                <div class="lib-head-actions">
+                    <button class="st-icon-btn" type="button" title="刷新书库列表" :disabled="loading" @click="refresh">
+                        <n-icon :size="18"><RefreshOutlined /></n-icon>
+                    </button>
+                    <button v-if="isAdmin" class="st-btn st-btn--primary" type="button" @click="addLibraryFn">新建书库</button>
+                </div>
             </div>
-            <div class="toolbar-actions">
-                <n-button quaternary circle :loading="loading" title="刷新" @click="refresh">
-                    <template #icon>
-                        <n-icon><RefreshOutlined /></n-icon>
-                    </template>
-                </n-button>
-                <n-button v-if="isAdmin" type="primary" @click="addLibraryFn">
-                    <template #icon>
-                        <n-icon><Add12Filled /></n-icon>
-                    </template>
-                    新建
-                </n-button>
-            </div>
-        </div>
+            <p class="st-lede">每个库都是一个可以直接翻的目录。点开一个，就进它的书架。</p>
+        </header>
 
-        <!-- 列表 -->
-        <div class="list" v-if="visibleList.length">
-            <n-card
-                v-for="item in visibleList"
-                :key="item.uuid"
-                class="lib-card"
-                :class="{ 'is-current': isCurrent(item) }"
-                :style="isCurrent(item) ? { borderColor: themeVars.primaryColor } : undefined"
-                @click="toJump(item)"
-            >
-                <div class="lib-main">
-                    <div class="lib-name">
-                        <span class="name-text">{{ item.name }}</span>
-                        <n-tag v-if="isCurrent(item)" size="small" type="success" round :bordered="false">正在使用</n-tag>
-                        <n-tag v-for="group in item.groupList || []" :key="group" size="small" round :bordered="false">{{ group }}</n-tag>
+        <section class="st-panel" aria-labelledby="lib-panel-title">
+            <header class="st-panel-head">
+                <span class="st-panel-index">{{ visibleList.length }} 座</span>
+                <h2 id="lib-panel-title" class="st-panel-title">全部书库</h2>
+            </header>
+
+            <ul v-if="visibleList.length" class="lib-list">
+                <li v-for="(item, index) in visibleList" :key="item.uuid" class="lib-item" :class="{ 'is-current': isCurrent(item) }">
+                    <button class="lib-open" type="button" @click="toJump(item)">
+                        <span class="lib-index" aria-hidden="true">{{ String(index + 1).padStart(2, "0") }}</span>
+                        <span class="lib-main">
+                            <span class="lib-name-row">
+                                <span class="lib-name">{{ item.name }}</span>
+                                <span v-if="isCurrent(item)" class="st-tag st-tag--accent">正在使用</span>
+                                <span v-for="group in item.groupList || []" :key="group" class="st-tag">{{ group }}</span>
+                            </span>
+                            <span class="lib-path" :title="item.pathUrl">{{ item.pathUrl }}</span>
+                        </span>
+                    </button>
+                    <div v-if="isAdmin" class="lib-ops">
+                        <n-dropdown trigger="click" :options="menuOptions" @select="onMenu($event, item)">
+                            <button class="st-icon-btn" type="button" title="更多操作">
+                                <n-icon :size="18"><EllipsisHorizontal /></n-icon>
+                            </button>
+                        </n-dropdown>
                     </div>
-                    <div class="lib-path" :title="item.pathUrl">{{ item.pathUrl }}</div>
-                </div>
-                <div class="lib-ops" @click.stop>
-                    <n-button size="small" type="primary" secondary @click="toJump(item)">进入</n-button>
-                    <n-dropdown v-if="isAdmin" trigger="click" :options="menuOptions" @select="onMenu($event, item)">
-                        <n-button size="small" quaternary circle title="更多">
-                            <template #icon>
-                                <n-icon><EllipsisHorizontal /></n-icon>
-                            </template>
-                        </n-button>
-                    </n-dropdown>
-                </div>
-            </n-card>
-        </div>
+                </li>
+            </ul>
 
-        <!-- 加载中 -->
-        <div class="placeholder" v-else-if="loading">
-            <n-skeleton text :repeat="3" style="width: 60%" />
-        </div>
+            <div v-else-if="loading" class="lib-skeleton" aria-hidden="true">
+                <span v-for="i in 3" :key="i" class="st-skeleton"></span>
+            </div>
 
-        <!-- 空 -->
-        <div class="placeholder" v-else>
-            <n-empty :description="emptyText" size="huge">
-                <template #extra v-if="isAdmin">
-                    <n-button type="primary" size="small" @click="addLibraryFn">新建书库</n-button>
-                </template>
-            </n-empty>
-        </div>
+            <div v-else class="st-empty">
+                <p>{{ emptyText }}</p>
+                <button v-if="isAdmin" class="st-btn st-btn--primary lib-empty-btn" type="button" @click="addLibraryFn">新建书库</button>
+            </div>
+        </section>
 
         <!-- 新建 / 编辑 -->
         <n-drawer v-model:show="openDrawer" placement="top" :height="520" @after-enter="onShow">
@@ -91,9 +77,8 @@
 </template>
 
 <script setup lang="ts">
-import { useThemeVars, useMessage, useDialog } from "naive-ui";
+import { useMessage, useDialog } from "naive-ui";
 import { computed, onMounted, ref } from "vue";
-import { Add12Filled } from "@vicons/fluent";
 import { RefreshOutlined } from "@vicons/material";
 import { EllipsisHorizontal } from "@vicons/ionicons5";
 import { useConfigStore } from "@/stores/config";
@@ -103,7 +88,6 @@ import { libraryFetch } from "@/utils/jFetch";
 import { useViewStore } from "@/stores/view";
 import { touchHistoryLibrary } from "@/views/history/historyData";
 
-const themeVars = useThemeVars();
 const configStore = useConfigStore();
 const viewStore = useViewStore();
 const router = useRouter();
@@ -281,102 +265,143 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.library-view {
-    height: 100%;
-    min-height: 0;
+.lib-head-row {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 0 8px;
-}
-
-.toolbar {
-    display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: space-between;
-    padding: 4px 2px;
+    gap: 16px;
 }
 
-.toolbar-title {
+.lib-head-actions {
+    flex: none;
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 1.05rem;
-    font-weight: 600;
+    padding-top: 10px;
 }
 
-.toolbar-actions {
+.lib-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--st-line);
+}
+
+.lib-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 8px;
+    border-bottom: 1px solid var(--st-line);
+    transition: background-color 0.15s ease;
 }
 
-.list {
+.lib-item:hover {
+    background: var(--st-graphite-wash);
+}
+
+.lib-item.is-current::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    width: 2px;
+    background: var(--st-vermilion);
+}
+
+.lib-open {
     flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 2px 2px 12px;
-}
-
-.lib-card {
-    cursor: pointer;
-    border-radius: 10px;
-    transition: border-color 0.15s ease, background-color 0.15s ease;
-}
-
-.lib-card:hover {
-    background: rgba(127, 127, 127, 0.08);
-}
-
-.lib-card :deep(.n-card__content) {
+    min-width: 0;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px 14px;
+    gap: 16px;
+    min-height: 76px;
+    padding: 14px 8px 14px 12px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.lib-open:focus-visible {
+    outline: 2px solid var(--st-paper);
+    outline-offset: -2px;
+}
+
+.lib-index {
+    flex: none;
+    width: 30px;
+    font-family: var(--st-font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+    color: var(--st-graphite);
+}
+
+.lib-item.is-current .lib-index {
+    color: var(--st-vermilion);
 }
 
 .lib-main {
     min-width: 0;
-    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.lib-name-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
 }
 
 .lib-name {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.name-text {
-    font-size: 1rem;
-    font-weight: 600;
+    font-family: var(--st-font-display);
+    font-size: 20px;
+    line-height: 1.3;
+    color: var(--st-paper);
+    word-break: break-all;
 }
 
 .lib-path {
-    margin-top: 2px;
-    font-size: 0.76rem;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    opacity: 0.55;
+    font-family: var(--st-font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--st-graphite);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .lib-ops {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
+    flex: none;
+    padding-right: 8px;
 }
 
-.placeholder {
-    flex: 1;
+.lib-skeleton {
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    padding: 20px 0;
+}
+
+.lib-skeleton .st-skeleton:nth-child(1) {
+    width: 58%;
+}
+
+.lib-skeleton .st-skeleton:nth-child(2) {
+    width: 74%;
+}
+
+.lib-skeleton .st-skeleton:nth-child(3) {
+    width: 46%;
+}
+
+.lib-empty-btn {
+    margin-top: 14px;
 }
 </style>

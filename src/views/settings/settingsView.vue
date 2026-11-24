@@ -2,7 +2,6 @@
     <n-config-provider class="settings-shell" :theme-overrides="themeOverrides">
         <div class="st-scope settings-page">
             <header class="st-page-head">
-                <div class="st-eyebrow">VIEW-COMIC · 控制台</div>
                 <h1 class="st-title">设置</h1>
                 <p class="st-lede">调好留白、预加载与本地缓存。改动即时生效，离开这一页也不会丢。</p>
             </header>

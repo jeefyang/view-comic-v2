@@ -1,6 +1,6 @@
 <!-- src/App.vue -->
 <template>
-    <n-config-provider :theme="darkTheme ? darkThemePreset : undefined">
+    <n-config-provider :theme="darkThemePreset" :theme-overrides="appThemeOverrides">
         <n-global-style />
         <n-dialog-provider>
             <n-message-provider>
@@ -25,10 +25,11 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from "vue";
 import { useDark } from "@vueuse/core";
-import { darkTheme, darkTheme as darkThemePreset } from "naive-ui";
+import { darkTheme as darkThemePreset } from "naive-ui";
 import AppBottomNav from "@/components/AppBottomNav.vue";
 import { useConfigStore } from "./stores/config";
 import XLogin from "./components/XLogin.vue";
+import { appThemeOverrides } from "@/views/settings/theme";
 import router from "@/router";
 import { configFetch, libraryFetch, userFetch, viewFetch } from "./utils/jFetch";
 import type { ResSendType } from "@common/apis/tools/apiUrlsTrans";
